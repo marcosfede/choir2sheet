@@ -31,32 +31,23 @@ def full_pipeline(
     onset_threshold: float = 0.5,
     frame_threshold: float = 0.3,
     minimum_note_length: float = 58.0,
-) -> Path:
+    # Post-processing options
+    quantize: bool = False,
+    tempo_bpm: float | None = None,
+    time_sig: str = "4/4",
+    detect_key: bool = False,
+    set_key: str | None = None,
+) -> dict:
     """Run the full choir2sheet pipeline.
 
-    1. Separate audio into stems (Demucs, optionally MVSEP SATB)
-    2. Transcribe each stem to MIDI (Basic Pitch)
-    3. Assemble into a single score (music21)
-    4. Export to the requested format
-
-    Parameters
-    ----------
-    audio_path : Path
-        Input audio file.
-    output_path : Path
-        Where to write the final score.
-    output_format : str | None
-        Export format (musicxml, midi, lilypond, abc, pdf). Inferred from
-        extension if not specified.
-    skip_separation : bool
-        If True, skip Demucs and transcribe the raw audio directly.
-    skip_satb : bool
-        If True, skip MVSEP SATB splitting (keep vocals as one stem).
+    Returns a dict with structured results (file paths, analysis, etc.).
     """
     audio_path = Path(audio_path)
     output_path = Path(output_path)
     work_dir = output_path.parent / ".choir2sheet_work"
     work_dir.mkdir(parents=True, exist_ok=True)
+
+    result: dict = {"ok": True, "stages": {}}
 
     # ── Stage 1: Separation ──────────────────────────────────────────
     if skip_separation:
@@ -78,6 +69,10 @@ def full_pipeline(
                 device=device,
                 skip_satb=skip_satb,
             )
+
+    result["stages"]["separation"] = {
+        "stems": {name: str(path) for name, path in stems.items()},
+    }
     logger.info("Stems: %s", list(stems.keys()))
 
     # ── Stage 2: Transcription ───────────────────────────────────────
@@ -91,13 +86,49 @@ def full_pipeline(
     )
     if not midi_files:
         raise RuntimeError("No stems were successfully transcribed to MIDI")
+
+    result["stages"]["transcription"] = {
+        "midi_files": {name: str(path) for name, path in midi_files.items()},
+    }
     logger.info("Transcribed %d stem(s) to MIDI", len(midi_files))
 
-    # ── Stage 3: Score assembly & export ─────────────────────────────
-    logger.info("Stage 3: Score assembly and export")
+    # ── Stage 3: Score assembly ──────────────────────────────────────
+    logger.info("Stage 3: Score assembly")
     score = build_score(midi_files, title=title, composer=composer)
-    result = export_score(score, output_path, fmt=output_format)
-    logger.info("Done! Output: %s", result)
+
+    # ── Stage 4 (optional): Post-processing ──────────────────────────
+    postprocess_results: dict = {}
+
+    # Key detection
+    if detect_key or set_key:
+        from .postprocess import detect_key as _detect_key, apply_key
+
+        if set_key:
+            score = apply_key(score, set_key)
+            postprocess_results["key"] = {"key": set_key, "source": "manual"}
+        else:
+            key_result = _detect_key(score)
+            postprocess_results["key"] = {**key_result.to_dict(), "source": "detected"}
+            score = apply_key(score, key_result.key)
+
+    # Quantization
+    if quantize:
+        from .postprocess import quantize_score
+
+        score, quant_result = quantize_score(
+            score, tempo_bpm=tempo_bpm, time_sig=time_sig,
+        )
+        postprocess_results["quantization"] = quant_result.to_dict()
+
+    if postprocess_results:
+        result["stages"]["postprocess"] = postprocess_results
+
+    # ── Stage 5: Export ──────────────────────────────────────────────
+    logger.info("Stage 5: Export")
+    exported = export_score(score, output_path, fmt=output_format)
+    result["output"] = str(exported)
+    logger.info("Done! Output: %s", exported)
+
     return result
 
 
@@ -109,11 +140,8 @@ def simple_transcribe(
     title: str = "Transcription",
     onset_threshold: float = 0.5,
     frame_threshold: float = 0.3,
-) -> Path:
-    """Simplified pipeline: transcribe a single audio file directly (no separation).
-
-    Good for single-instrument or single-voice recordings.
-    """
+) -> dict:
+    """Simplified pipeline: transcribe a single audio file directly (no separation)."""
     return full_pipeline(
         audio_path,
         output_path,
