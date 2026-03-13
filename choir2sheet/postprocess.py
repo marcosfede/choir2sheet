@@ -93,7 +93,14 @@ def apply_key(score: stream.Score, key_name: str) -> stream.Score:
     key_name : str
         Key name like "G major", "F# minor", "Bb major".
     """
-    parsed_key = key.Key(key_name)
+    # key.Key() expects separate tonic and mode args
+    parts_of_name = key_name.strip().split()
+    if len(parts_of_name) >= 2:
+        tonic = parts_of_name[0]
+        mode = parts_of_name[-1]
+        parsed_key = key.Key(tonic, mode)
+    else:
+        parsed_key = key.Key(key_name)
     for part in score.parts:
         part.insert(0, parsed_key)
     logger.info("Applied key signature: %s", key_name)
