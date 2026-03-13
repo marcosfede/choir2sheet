@@ -4,6 +4,7 @@ __pycache__/
 dist/
 build/
 .eggs/
+.venv/
 test_output/
 *.wav
 .choir2sheet_work/
