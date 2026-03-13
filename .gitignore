@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.eggs/
+test_output/
+*.wav
+.choir2sheet_work/
