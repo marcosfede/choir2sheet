@@ -192,7 +192,7 @@
     }
     drawHilite();
   }
-  const measureAt = (sec) => { let m = measures[0]; for (const x of measures) { if (x.start <= sec + 1e-3) m = x; else break; } return m; };
+  const measureAt = (sec) => { let m = measures[0]; for (const x of measures) { if (x.start <= sec + 1 / (2 * Tone.Transport.PPQ)) m = x; else break; } return m; };
   function measureAtPoint(px, py) {
     let best = null, bd = Infinity;
     for (const m of measures) for (const r of m.rects) {
