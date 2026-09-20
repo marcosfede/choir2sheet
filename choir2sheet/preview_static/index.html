@@ -83,7 +83,7 @@
   #paper.busy { cursor:progress; }
   #osmd { position:relative; }
   #osmd svg { display:block; }
-  #hilite { position:absolute; inset:0; pointer-events:none; }
+  #hilite { position:absolute; top:26px; left:30px; right:30px; bottom:26px; pointer-events:none; }
   #hilite .cyc { position:absolute; background:rgba(246,196,69,.16); border-top:2px solid var(--solo); border-bottom:2px solid var(--solo); border-radius:2px; }
   #hilite .selm { position:absolute; background:rgba(47,124,246,.10); }
   #toast { position:fixed; right:14px; bottom:12px; background:rgba(20,20,22,.9); color:#ddd; padding:6px 10px; border-radius:6px; font-size:11px; pointer-events:none; opacity:0; transition:opacity .25s; }
@@ -192,7 +192,7 @@
     }
     drawHilite();
   }
-  const measureAt = (sec) => { let m = measures[0]; for (const x of measures) { if (x.start <= sec) m = x; else break; } return m; };
+  const measureAt = (sec) => { let m = measures[0]; for (const x of measures) { if (x.start <= sec + 1e-3) m = x; else break; } return m; };
   function measureAtPoint(px, py) {
     let best = null, bd = Infinity;
     for (const m of measures) for (const r of m.rects) {
@@ -224,13 +224,13 @@
     tr.part = new Tone.Part((time, n) => { if (source === 'synth') { tr.synth.triggerAttackRelease(n.name, Math.max(0.06, n.duration), time, n.velocity); tr.pulse = 1; } },
                             t.notes.map(n => [n.time, n])).start(0);
     const a = takeAudioFor(name);
-    if (a) { tr.stem = a.key; tr.player = new Tone.Player({ url: a.url }).connect(tr.bus); tr.player.sync().start(0); }
+    if (a) { tr.stem = a.key; tr.player = new Tone.Player({ url: a.url }).connect(tr.bus); }
     tracks.push(tr);
   }
   for (const [j, [key, url]] of Object.entries(audioFiles).entries()) {  // stems with no matching staff
     const tr = { name: key, color: COLORS[(midiTracks.length + j) % COLORS.length], mute: false, solo: false, gain: 0.8, pulse: 0,
                  bus: new Tone.Channel().connect(master), stem: key, player: null, synth: null, part: null };
-    tr.player = new Tone.Player({ url }).connect(tr.bus); tr.player.sync().start(0);
+    tr.player = new Tone.Player({ url }).connect(tr.bus);
     tracks.push(tr);
   }
   const hasAudio = tracks.some(t => t.player);
@@ -240,8 +240,10 @@
   function applyMix() {
     tracks.forEach(tr => {
       const on = audible(tr) && (source === 'synth' ? !!tr.synth : !!tr.player);
-      tr.bus.mute = !on;
       tr.bus.volume.value = tr.gain > 0 ? 20 * Math.log10(tr.gain / 0.8) : -Infinity;
+      tr.bus.mute = !on;
+      if (tr.player) tr.player.mute = source !== 'audio';
+      if (tr.synth) { tr.synth.volume.value = source === 'synth' ? -10 : -Infinity; if (source !== 'synth') tr.synth.releaseAll(); }
       tr.el.classList.toggle('off', !audible(tr));
       tr.el.querySelector('.m').classList.toggle('on', tr.mute);
       tr.el.querySelector('.s').classList.toggle('on', tr.solo);
@@ -278,10 +280,16 @@
   let playing = false, speed = 100;
 
   const releaseAll = () => tracks.forEach(t => t.synth && t.synth.releaseAll());
+  // Stems are driven by hand (not Tone's sync) so that a seek at speed != 100% starts
+  // them at the score position rather than at the transport's elapsed seconds.
+  const stopPlayers = () => tracks.forEach(t => t.player && t.player.state === 'started' && t.player.stop());
+  const startPlayers = () => { const at = pos(); tracks.forEach(t => {
+    if (!t.player || !t.player.loaded || at >= t.player.buffer.duration) return;
+    t.player.playbackRate = speed / 100; t.player.start(undefined, at); }); };
   function setSpeed(p) {
     speed = Math.max(40, Math.min(150, Math.round(p / 5) * 5));
     T.bpm.value = 120 * speed / 100;
-    tracks.forEach(t => t.player && (t.player.playbackRate = speed / 100));
+    if (playing) { stopPlayers(); startPlayers(); } else tracks.forEach(t => t.player && (t.player.playbackRate = speed / 100));
     $('lcd-tempo').querySelector('.big').textContent = speed;
   }
   const cycleRange = () => cycle ? { a: measures[cycle.a].start, b: measures[cycle.b].end } : null;
@@ -290,17 +298,17 @@
     const r = cycleOn && cycleRange();
     if (pos() >= duration - 0.01 || (r && (pos() < r.a || pos() >= r.b))) seek(r ? r.a : 0);
     playing = true; $('play').classList.add('on'); $('play').textContent = '■';
-    T.start();
+    T.start(); startPlayers();
   }
   function stop() {
     playing = false; $('play').classList.remove('on'); $('play').textContent = '▶';
-    T.pause(); releaseAll();
+    T.pause(); stopPlayers(); releaseAll();
   }
   function seek(sec) {
     sec = Math.max(0, Math.min(duration, sec));
-    const was = playing; if (was) T.pause();
+    const was = playing; if (was) { T.pause(); stopPlayers(); }
     releaseAll(); setPos(sec);
-    if (was) T.start();
+    if (was) { T.start(); startPlayers(); }
     moveCursorTo(sec);
   }
   const cursorSec = () => wnToSec(osmd.cursor.iterator.currentTimeStamp.RealValue);
