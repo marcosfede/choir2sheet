@@ -56,8 +56,14 @@ uv run choir2sheet transcribe song.wav score.musicxml --skip-separation
 uv run choir2sheet transcribe song.wav score.musicxml \
     --skip-separation --detect-key --quantize --tempo 120 --time-sig 4/4
 
-# Full choir pipeline with SATB separation
-uv run choir2sheet transcribe choir.wav score.musicxml --mvsep-api-key $KEY
+# Full choir pipeline: Demucs + local SepACap voice-part split (default)
+uv run choir2sheet transcribe choir.wav score.musicxml
+
+# ...or use the MVSEP cloud API for the SATB split
+uv run choir2sheet transcribe choir.wav score.musicxml --satb-backend mvsep --mvsep-api-key $KEY
+
+# Split an a cappella / vocals-only recording into lead/soprano/alto/tenor/bass
+uv run choir2sheet split-voices vocals.wav -o voices/
 ```
 
 ### Individual Stages
@@ -114,7 +120,7 @@ Audio
   │
   ├─ [separate]      Demucs → vocals, piano, bass, drums, guitar
   │     │
-  │     └─ [MVSEP]   SATB split → soprano, alto, tenor, bass (optional)
+  │     └─ [SepACap | MVSEP]  voice-part split → lead, soprano, alto, tenor, bass (optional)
   │
   ├─ [midi-transcribe]  Basic Pitch → MIDI per stem
   │
@@ -156,7 +162,9 @@ uv run python benchmarks/vocadito_vocals.py  # VOCADITO vocals
 choir2sheet/
 ├── __init__.py        # Package version
 ├── cli.py             # Click CLI (JSON output, composable subcommands)
-├── separator.py       # Demucs + MVSEP source separation
+├── separator.py       # Demucs + SepACap/MVSEP source separation
+├── sepacap.py         # Local SepACap inference (weights from Hugging Face)
+├── sepacap_model/     # Vendored SepACap network (ETH-DISCO/SepACap, MIT)
 ├── transcriber.py     # Basic Pitch audio → MIDI
 ├── score.py           # music21 score assembly + export
 ├── postprocess.py     # Key detection + rhythmic quantization

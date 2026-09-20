@@ -71,6 +71,25 @@ def setup_demucs() -> bool:
         return False
 
 
+def setup_sepacap() -> bool:
+    """Pre-download the SepACap voice-part separation weights."""
+    logger.info("Setting up SepACap model...")
+    try:
+        from .sepacap import download_sepacap
+
+        ckpt, _ = download_sepacap()
+        logger.info("  SepACap ready: %s", ckpt)
+        return True
+    except ImportError:
+        logger.warning(
+            "huggingface-hub not installed. Install with: uv sync --extra separation"
+        )
+        return False
+    except Exception as e:
+        logger.error("Failed to set up SepACap: %s", e)
+        return False
+
+
 def setup_fluidsynth() -> bool:
     """Check FluidSynth and soundfont availability."""
     logger.info("Checking FluidSynth...")
@@ -168,11 +187,13 @@ def check_system_deps() -> None:
               help="Download Basic Pitch model.")
 @click.option("--demucs", "do_demucs", is_flag=True,
               help="Download Demucs separation models.")
+@click.option("--sepacap", "do_sepacap", is_flag=True,
+              help="Download SepACap voice-part separation weights.")
 @click.option("--all", "do_all", is_flag=True,
               help="Download all models and check all deps.")
-def main(do_basic_pitch, do_demucs, do_all):
+def main(do_basic_pitch, do_demucs, do_sepacap, do_all):
     """Download and cache models for choir2sheet."""
-    if not any([do_basic_pitch, do_demucs, do_all]):
+    if not any([do_basic_pitch, do_demucs, do_sepacap, do_all]):
         do_all = True
 
     results = {}
@@ -186,6 +207,9 @@ def main(do_basic_pitch, do_demucs, do_all):
 
     if do_all or do_demucs:
         results["demucs"] = setup_demucs()
+
+    if do_all or do_sepacap:
+        results["sepacap"] = setup_sepacap()
 
     if do_all:
         results["fluidsynth"] = setup_fluidsynth()

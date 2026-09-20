@@ -1,4 +1,4 @@
-"""Audio source separation using Demucs and MVSEP."""
+"""Audio source separation using Demucs, then SepACap (local) or MVSEP (cloud)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,11 @@ from typing import Optional
 
 import requests
 
+from .sepacap import sepacap_separate
+
 logger = logging.getLogger(__name__)
+
+SATB_BACKENDS = ("sepacap", "mvsep", "none")
 
 # ---------------------------------------------------------------------------
 # Demucs – local vocal/instrument separation
@@ -148,14 +152,21 @@ def separate_choir(
     audio_path: Path,
     output_dir: Path,
     *,
+    satb_backend: str = "sepacap",
     mvsep_api_key: Optional[str] = None,
     device: str = "cpu",
     skip_satb: bool = False,
 ) -> dict[str, Path]:
-    """Full separation pipeline: Demucs → MVSEP SATB.
+    """Full separation pipeline: Demucs → voice-part split.
 
-    Returns a dict of all final stems (e.g. soprano, alto, tenor, bass, piano).
+    ``satb_backend`` is ``"sepacap"`` (local model), ``"mvsep"`` (cloud API)
+    or ``"none"``. Returns a dict of all final stems (e.g. soprano, alto,
+    tenor, bass, piano).
     """
+    if satb_backend not in SATB_BACKENDS:
+        raise ValueError(
+            f"Unknown SATB backend {satb_backend!r}; expected one of {SATB_BACKENDS}"
+        )
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -174,21 +185,31 @@ def separate_choir(
         logger.warning("No vocals stem from Demucs; skipping SATB split")
         return all_stems
 
-    if skip_satb:
+    if skip_satb or satb_backend == "none":
         all_stems["vocals"] = vocals_path
         return all_stems
 
-    # Step 2: MVSEP – split vocals into SATB
+    # Step 2: split vocals into voice parts
     try:
-        satb_stems = mvsep_separate(
-            vocals_path,
-            output_dir / "satb",
-            api_key=mvsep_api_key,
-        )
+        if satb_backend == "sepacap":
+            satb_stems = sepacap_separate(
+                vocals_path, output_dir / "satb", device=device,
+            )
+        else:
+            satb_stems = mvsep_separate(
+                vocals_path,
+                output_dir / "satb",
+                api_key=mvsep_api_key,
+            )
+        if not satb_stems:
+            raise RuntimeError("voice-part separation returned no stems")
+        for name in satb_stems.keys() & all_stems.keys():
+            # Demucs "bass" (instrument) vs. voice-part "bass".
+            all_stems[f"{name}_inst"] = all_stems.pop(name)
         all_stems.update(satb_stems)
     except Exception:
         logger.exception(
-            "MVSEP SATB separation failed; falling back to unsplit vocals"
+            "%s SATB separation failed; falling back to unsplit vocals", satb_backend
         )
         all_stems["vocals"] = vocals_path
 

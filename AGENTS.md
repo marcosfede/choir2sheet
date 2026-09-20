@@ -7,7 +7,7 @@ Audio-to-sheet-music transcription pipeline. Every command outputs **structured 
 ```bash
 uv sync                          # core deps
 uv sync --extra separation       # + Demucs source separation
-uv run python -m choir2sheet.setup_models  # download ML models
+uv run python -m choir2sheet.setup_models --all  # download ML models (Basic Pitch, Demucs, SepACap)
 ```
 
 ## Commands
@@ -22,8 +22,9 @@ choir2sheet transcribe <audio> <output> [options]
 |------|---------|-------------|
 | `-f, --format` | (from extension) | `musicxml`, `midi`, `lilypond`, `abc`, `pdf` |
 | `--skip-separation` | false | Skip Demucs; transcribe raw audio directly |
-| `--skip-satb` | false | Skip MVSEP vocal splitting |
-| `--mvsep-api-key` | `$MVSEP_API_KEY` | MVSEP cloud API key |
+| `--skip-satb` | false | Skip voice-part splitting |
+| `--satb-backend` | `sepacap` | `sepacap` (local model), `mvsep` (cloud API), `none` |
+| `--mvsep-api-key` | `$MVSEP_API_KEY` | MVSEP cloud API key (only for `--satb-backend mvsep`) |
 | `--device` | `cpu` | `cpu` or `cuda` |
 | `--onset-threshold` | 0.5 | Note onset confidence (0–1) |
 | `--frame-threshold` | 0.3 | Frame activation threshold (0–1) |
@@ -53,7 +54,7 @@ choir2sheet transcribe <audio> <output> [options]
 ### `separate` — Source separation only
 
 ```bash
-choir2sheet separate <audio> [-o stems/] [--device cpu] [--skip-satb] [--mvsep-api-key KEY]
+choir2sheet separate <audio> [-o stems/] [--device cpu] [--skip-satb] [--satb-backend sepacap|mvsep|none] [--mvsep-api-key KEY]
 ```
 
 ```json
@@ -61,7 +62,22 @@ choir2sheet separate <audio> [-o stems/] [--device cpu] [--skip-satb] [--mvsep-a
 ```
 
 Without SATB: stems are `vocals`, `piano`, `bass`, `drums`, `guitar`, `other`.
-With SATB: vocal stems become `soprano`, `alto`, `tenor`, `bass`.
+With SATB: vocal stems become `lead`, `soprano`, `alto`, `tenor`, `bass` (SepACap drops
+voices it left silent); the Demucs instrument `bass` is renamed `bass_inst`. If the split
+fails, `vocals` is kept unsplit.
+
+### `split-voices` — Voice-part split of a vocals-only recording (SepACap, local)
+
+```bash
+choir2sheet split-voices <vocals.wav> [-o voices/] [--device cpu] [--keep-silent]
+```
+
+```json
+{ "ok": true, "stems": { "lead": "...", "soprano": "...", "alto": "...", "tenor": "..." } }
+```
+
+Weights (~160 MB) download from Hugging Face `Tino3141/sepacap` on first use. Output is 24 kHz.
+CPU speed is roughly 4× real time.
 
 ### `midi-transcribe` — Audio → MIDI
 
@@ -163,8 +179,10 @@ choir2sheet -q quantize raw.mid final.musicxml --tempo 96 --time-sig 3/4 2>/dev/
 ### Choir with SATB separation
 
 ```bash
+choir2sheet -q transcribe choir.wav score.musicxml --detect-key --quantize 2>/dev/null
+# cloud alternative:
 choir2sheet -q transcribe choir.wav score.musicxml \
-  --mvsep-api-key "$KEY" --detect-key --quantize 2>/dev/null
+  --satb-backend mvsep --mvsep-api-key "$KEY" --detect-key --quantize 2>/dev/null
 ```
 
 ### Batch evaluation
@@ -181,7 +199,7 @@ done
 ```
 Audio → [separate] Demucs → stems (vocals, piano, bass, drums, guitar)
                      ↓
-              [MVSEP] → SATB split (soprano, alto, tenor, bass)  [optional]
+       [SepACap|MVSEP] → voice-part split (lead, soprano, alto, tenor, bass)  [optional]
                      ↓
        [midi-transcribe] Basic Pitch → MIDI per stem
                      ↓
@@ -207,12 +225,12 @@ The `transcribe` command creates `.choir2sheet_work/` alongside the output:
 ```
 .choir2sheet_work/
 ├── demucs/htdemucs_6s/{stem}/  — separated audio stems
-├── satb/                        — SATB vocal splits
+├── satb/                        — voice-part splits
 └── midi/                        — per-stem MIDI files
 ```
 
 ## Dependencies
 
 - **Required**: basic-pitch, music21, click, numpy, pretty-midi, mir-eval, soundfile
-- **Optional**: `demucs` (separation), `pyfluidsynth` (synthesis), `lilypond` (PDF export)
-- **Env vars**: `MVSEP_API_KEY`, `TORCH_HOME`
+- **Optional**: `demucs`, `huggingface-hub`, `pyyaml` (separation extra), `pyfluidsynth` (synthesis), `lilypond` (PDF export)
+- **Env vars**: `MVSEP_API_KEY`, `TORCH_HOME`, `HF_HOME` (SepACap weight cache)
