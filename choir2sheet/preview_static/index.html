@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>choir2sheet preview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#f6f6f4; --panel:#fff; --line:#ddd; --accent:#2b6cb0; --muted:#999; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 14px/1.4 system-ui, sans-serif; background:var(--bg); color:#222;
+         display:grid; grid-template-rows:auto 1fr; grid-template-columns:280px 1fr; height:100vh; }
+  header { grid-column:1/3; display:flex; align-items:center; gap:12px; padding:8px 14px;
+           background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0 12px 0 0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  button { font:inherit; padding:5px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.solo.on { background:#d69e2e; border-color:#d69e2e; }
+  button.mute.on { background:#c53030; border-color:#c53030; }
+  #seek { flex:1; }
+  #time { font-variant-numeric: tabular-nums; min-width:110px; text-align:right; }
+  aside { border-right:1px solid var(--line); background:var(--panel); overflow:auto; padding:10px; }
+  aside h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:14px 0 6px; }
+  .track { display:grid; grid-template-columns:1fr auto auto; gap:6px; align-items:center; padding:6px 4px; border-bottom:1px solid #eee; }
+  .track .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .track .sub { color:var(--muted); font-size:11px; }
+  .track input[type=range] { grid-column:1/4; width:100%; }
+  .track button { padding:2px 8px; font-size:12px; }
+  main { overflow:auto; padding:10px 16px; }
+  #osmd { background:#fff; border:1px solid var(--line); border-radius:6px; padding:12px; min-height:300px; }
+  #status { color:var(--muted); font-size:12px; margin-left:auto; }
+  label.inline { display:flex; align-items:center; gap:4px; color:#555; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">choir2sheet</h1>
+  <button id="play" title="Space">▶ Play</button>
+  <button id="stop">■ Stop</button>
+  <input id="seek" type="range" min="0" max="1000" value="0">
+  <span id="time">0:00 / 0:00</span>
+  <label class="inline">tempo <input id="tempo" type="number" min="25" max="300" step="5" value="100" style="width:60px">%</label>
+  <label class="inline"><input id="follow" type="checkbox" checked> follow cursor</label>
+  <span id="status">loading…</span>
+</header>
+<aside>
+  <div style="display:flex;gap:6px">
+    <button id="all-on">All on</button>
+    <button id="clear-solo">Clear solo</button>
+  </div>
+  <h2>MIDI tracks</h2>
+  <div id="tracks"></div>
+  <div id="audio-section" hidden>
+    <h2>Audio</h2>
+    <div id="audio"></div>
+  </div>
+</aside>
+<main><div id="osmd"></div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.js"></script>
+<script>
+(async function () {
+  const $ = (id) => document.getElementById(id);
+  const status = (t) => { $('status').textContent = t; };
+
+  const manifest = await (await fetch('/manifest.json')).json();
+  $('title').textContent = manifest.title;
+  document.title = manifest.title + ' – choir2sheet preview';
+
+  // ── MIDI ───────────────────────────────────────────────────────────
+  const midi = new Midi(await (await fetch(manifest.midi)).arrayBuffer());
+  const ppq = midi.header.ppq;
+  const duration = midi.duration;
+  const partNames = manifest.parts || [];
+  const tracks = midi.tracks
+    .map((t, i) => ({ t, name: (partNames.length === midi.tracks.length && partNames[i]) || t.name || t.instrument.name || `Track ${i + 1}` }))
+    .filter(x => x.t.notes.length > 0);
+
+  // ── Notation ───────────────────────────────────────────────────────
+  const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay('osmd', {
+    autoResize: true, drawTitle: true, followCursor: true, drawPartNames: true,
+  });
+  await osmd.load(manifest.score);
+  osmd.render();
+  osmd.cursor.show();
+  osmd.cursor.reset();
+  // cursor timestamp (whole notes) → seconds, honouring MIDI tempo map
+  const cursorSeconds = () =>
+    midi.header.ticksToSeconds(osmd.cursor.iterator.currentTimeStamp.RealValue * 4 * ppq);
+
+  // ── Synth per track ────────────────────────────────────────────────
+  const master = new Tone.Volume(-6).toDestination();
+  const state = tracks.map(({ t, name }) => {
+    const ch = new Tone.Channel({ volume: 0 }).connect(master);
+    const synth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.02, decay: 0.1, sustain: 0.6, release: 0.15 },
+    }).connect(ch);
+    synth.maxPolyphony = 16;
+    const part = new Tone.Part((time, n) => {
+      synth.triggerAttackRelease(n.name, Math.max(0.05, n.duration), time, n.velocity);
+    }, t.notes.map(n => [n.time, n])).start(0);
+    return { track: t, name, ch, synth, part,
+             solo: false, mute: false };
+  });
+
+  // ── Audio files (optional) ─────────────────────────────────────────
+  const audio = Object.entries(manifest.audio || {}).map(([name, url]) => {
+    const el = new Audio(url); el.preload = 'auto';
+    return { name, el, solo: false, mute: false, volume: 1 };
+  });
+  if (audio.length) $('audio-section').hidden = false;
+
+  function applyMix() {
+    const anySolo = state.some(s => s.solo);
+    state.forEach(s => { s.ch.mute = s.mute || (anySolo && !s.solo); });
+    const anyASolo = audio.some(a => a.solo);
+    audio.forEach(a => { a.el.muted = a.mute || (anyASolo && !a.solo); });
+    document.querySelectorAll('[data-kind]').forEach(b => {
+      const list = b.dataset.kind === 'midi' ? state : audio;
+      b.classList.toggle('on', list[b.dataset.i][b.dataset.what]);
+    });
+  }
+
+  function trackRow(container, item, kind, i, onVolume) {
+    const row = document.createElement('div'); row.className = 'track';
+    row.innerHTML = `
+      <div class="name" title="${item.name}">${item.name}
+        <div class="sub">${kind === 'midi' ? item.track.notes.length + ' notes' : 'audio'}</div></div>
+      <button class="solo" data-kind="${kind}" data-i="${i}" data-what="solo" title="Solo">S</button>
+      <button class="mute" data-kind="${kind}" data-i="${i}" data-what="mute" title="Mute">M</button>
+      <input type="range" min="0" max="100" value="80" title="Volume">`;
+    row.querySelectorAll('button').forEach(b => b.onclick = () => { item[b.dataset.what] = !item[b.dataset.what]; applyMix(); });
+    row.querySelector('input').oninput = (e) => onVolume(+e.target.value / 100);
+    container.appendChild(row);
+  }
+  state.forEach((s, i) => trackRow($('tracks'), s, 'midi', i, v => { s.ch.volume.value = v > 0 ? 20 * Math.log10(v / 0.8) : -Infinity; }));
+  audio.forEach((a, i) => trackRow($('audio'), a, 'audio', i, v => { a.el.volume = Math.min(1, v / 0.8); }));
+  $('all-on').onclick = () => { state.concat(audio).forEach(x => { x.mute = false; x.solo = false; }); applyMix(); };
+  $('clear-solo').onclick = () => { state.concat(audio).forEach(x => { x.solo = false; }); applyMix(); };
+  applyMix();
+
+  // ── Transport ──────────────────────────────────────────────────────
+  const T = Tone.Transport;
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  let playing = false;
+  // Score position in seconds at nominal tempo. Parts are scheduled in ticks at
+  // Transport's default 120 BPM, so position = ticks / (2 * PPQ) stays valid
+  // when the tempo slider scales T.bpm.
+  const pos = () => T.ticks / (2 * T.PPQ);
+  const setPos = (sec) => { T.ticks = Math.round(sec * 2 * T.PPQ); };
+
+  function syncAudio(start) {
+    const t = pos();
+    audio.forEach(a => {
+      if (Math.abs(a.el.currentTime - t) > 0.15) a.el.currentTime = t;
+      if (start) a.el.playbackRate = T.bpm.value / 120;
+      if (start && a.el.paused) a.el.play().catch(() => {});
+      if (!start && !a.el.paused) a.el.pause();
+    });
+  }
+  function moveCursorTo(sec) {
+    if (cursorSeconds() > sec || osmd.cursor.iterator.EndReached) osmd.cursor.reset();
+    let guard = 100000;
+    while (!osmd.cursor.iterator.EndReached && cursorSeconds() <= sec && guard--) osmd.cursor.next();
+    osmd.cursor.update();
+  }
+  async function play() {
+    await Tone.start();
+    if (pos() >= duration) setPos(0);
+    playing = true; $('play').textContent = '❚❚ Pause'; $('play').classList.add('on');
+    T.start(); syncAudio(true);
+  }
+  function pause() {
+    playing = false; $('play').textContent = '▶ Play'; $('play').classList.remove('on');
+    T.pause(); state.forEach(s => s.synth.releaseAll()); syncAudio(false);
+  }
+  function seek(sec) {
+    setPos(Math.max(0, Math.min(duration, sec)));
+    state.forEach(s => s.synth.releaseAll());
+    syncAudio(playing); moveCursorTo(pos());
+  }
+  $('play').onclick = () => (playing ? pause() : play());
+  $('stop').onclick = () => { pause(); seek(0); };
+  $('seek').oninput = (e) => seek(+e.target.value / 1000 * duration);
+  $('tempo').onchange = (e) => {
+    T.bpm.value = 120 * (+e.target.value / 100);
+    syncAudio(playing);
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); $('play').click(); }
+  });
+  osmd.FollowCursor = true;
+  $('follow').onchange = (e) => { osmd.FollowCursor = e.target.checked; };
+
+  function tick() {
+    const t = pos();
+    if (playing) {
+      moveCursorTo(t);
+      if (t >= duration) pause();
+    }
+    $('seek').value = Math.round(t / duration * 1000);
+    $('time').textContent = `${fmt(t)} / ${fmt(duration)}`;
+    requestAnimationFrame(tick);
+  }
+  tick();
+  status(`${state.length} tracks · ${fmt(duration)}${audio.length ? ` · ${audio.length} audio files` : ''}`);
+})().catch(err => { document.getElementById('status').textContent = 'error: ' + err; console.error(err); });
+</script>
+</body>
+</html>

@@ -12,12 +12,23 @@ logger = logging.getLogger(__name__)
 
 # Map stem names to music21 instrument classes and clefs.
 VOICE_MAP: dict[str, tuple[type, str]] = {
+    "lead": (instrument.Vocalist, "treble"),
     "soprano": (instrument.Soprano, "treble"),
     "alto": (instrument.Alto, "treble"),
     "tenor": (instrument.Tenor, "treble8vb"),
     "bass": (instrument.Bass, "bass"),
     "vocals": (instrument.Vocalist, "treble"),
 }
+
+# Staff order in the assembled score: voices high→low, then instruments.
+STEM_ORDER = ("lead", "soprano", "alto", "tenor", "bass", "vocals",
+              "piano", "guitar", "bass_inst", "other", "drums")
+
+
+def _stem_rank(name: str) -> tuple[int, str]:
+    lower = name.lower()
+    return (STEM_ORDER.index(lower) if lower in STEM_ORDER else len(STEM_ORDER), lower)
+
 
 INSTRUMENT_MAP: dict[str, type] = {
     "piano": instrument.Piano,
@@ -69,8 +80,8 @@ def build_score(
         md.composer = composer
     score.metadata = md
 
-    for stem_name, midi_path in midi_files.items():
-        midi_path = Path(midi_path)
+    for stem_name in sorted(midi_files, key=_stem_rank):
+        midi_path = Path(midi_files[stem_name])
         if not midi_path.is_file():
             logger.warning("MIDI file not found, skipping: %s", midi_path)
             continue
@@ -84,16 +95,23 @@ def build_score(
         for i, src_part in enumerate(parts):
             part = stream.Part()
             part.id = stem_name if i == 0 else f"{stem_name}_{i}"
+            part.partName = part.id.replace("_inst", " (instr.)").replace("_", " ").title()
+            part.partAbbreviation = part.partName[:3]
 
             # Assign instrument
             stem_lower = stem_name.lower()
             if stem_lower in VOICE_MAP:
                 instr_cls, clef_name = VOICE_MAP[stem_lower]
-                part.insert(0, instr_cls())
+                instr = instr_cls()
             elif stem_lower in INSTRUMENT_MAP:
-                part.insert(0, INSTRUMENT_MAP[stem_lower]())
+                instr = INSTRUMENT_MAP[stem_lower]()
+            elif stem_lower == "bass_inst":
+                instr = instrument.AcousticBass()
             else:
-                part.insert(0, instrument.Instrument())
+                instr = instrument.Instrument()
+            instr.partName = part.partName
+            instr.partAbbreviation = part.partAbbreviation
+            part.insert(0, instr)
 
             # Copy measures/notes
             for element in src_part:
