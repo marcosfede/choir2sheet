@@ -91,8 +91,37 @@ def test_separate_choir_falls_back_to_vocals(tmp_path, monkeypatch, scale_wav):
         raise RuntimeError("mvsep down")
 
     monkeypatch.setattr(separator, "mvsep_separate", boom)
-    stems = separator.separate_choir(scale_wav, tmp_path / "w")
+    stems = separator.separate_choir(scale_wav, tmp_path / "w", satb_backend="mvsep")
     assert set(stems) == {"vocals", "piano"}
+
+
+def test_separate_choir_sepacap_renames_colliding_instrument(tmp_path, monkeypatch, scale_wav):
+    monkeypatch.setattr(
+        separator, "run_demucs",
+        lambda *a, **k: {"vocals": tmp_path / "vocals.wav", "bass": tmp_path / "bass.wav"},
+    )
+    monkeypatch.setattr(
+        separator, "sepacap_separate",
+        lambda *a, **k: {"soprano": tmp_path / "s.wav", "bass": tmp_path / "vb.wav"},
+    )
+    stems = separator.separate_choir(scale_wav, tmp_path / "w")
+    assert stems == {
+        "bass_inst": tmp_path / "bass.wav",
+        "soprano": tmp_path / "s.wav",
+        "bass": tmp_path / "vb.wav",
+    }
+
+
+def test_separate_choir_empty_split_falls_back(tmp_path, monkeypatch, scale_wav):
+    monkeypatch.setattr(separator, "run_demucs", lambda *a, **k: {"vocals": tmp_path / "v.wav"})
+    monkeypatch.setattr(separator, "sepacap_separate", lambda *a, **k: {})
+    stems = separator.separate_choir(scale_wav, tmp_path / "w")
+    assert set(stems) == {"vocals"}
+
+
+def test_separate_choir_rejects_unknown_backend(tmp_path, scale_wav):
+    with pytest.raises(ValueError):
+        separator.separate_choir(scale_wav, tmp_path / "w", satb_backend="magic")
 
 
 def test_separate_choir_skip_satb(tmp_path, monkeypatch, scale_wav):

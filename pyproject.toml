@@ -24,11 +24,18 @@ choir2sheet = "choir2sheet.cli:main"
 
 [project.optional-dependencies]
 # Source separation (large download: ~1GB for Demucs models)
-separation = ["demucs>=4.0.0", "torch<2.9", "torchaudio<2.9"]
+separation = [
+    "demucs>=4.0.0", "torch<2.9", "torchaudio<2.9",
+    # SepACap voice-part split (weights from Hugging Face)
+    "huggingface-hub>=0.20", "pyyaml>=6",
+]
 # FluidSynth for audio synthesis from MIDI
 synth = ["pyfluidsynth>=1.3.0"]
 # All optional deps
-all = ["demucs>=4.0.0", "torch<2.9", "torchaudio<2.9", "pyfluidsynth>=1.3.0"]
+all = [
+    "demucs>=4.0.0", "torch<2.9", "torchaudio<2.9", "huggingface-hub>=0.20", "pyyaml>=6",
+    "pyfluidsynth>=1.3.0",
+]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [build-system]
@@ -41,6 +48,8 @@ python-preference = "managed"
 
 [tool.ruff]
 line-length = 100
+# Vendored upstream model code, kept verbatim.
+exclude = ["choir2sheet/sepacap_model"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
