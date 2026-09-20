@@ -49,8 +49,8 @@ VOCAL_PROFILE = TranscriptionProfile(
     merge_gap=0.03,
 )
 
-VOCAL_STEMS = frozenset({"vocals", "soprano", "alto", "tenor", "bass"})
-SATB_STEMS = frozenset({"soprano", "alto", "tenor"})
+VOCAL_STEMS = frozenset({"vocals", "lead", "soprano", "alto", "tenor", "bass"})
+SATB_STEMS = frozenset({"lead", "soprano", "alto", "tenor"})
 
 
 def profile_for_stem(

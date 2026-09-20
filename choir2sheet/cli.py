@@ -15,6 +15,7 @@ import click
 
 from . import __version__
 from .score import list_formats
+from .separator import SATB_BACKENDS
 
 
 def _setup_logging(verbose: bool, quiet: bool) -> None:
@@ -71,7 +72,10 @@ def main(ctx, verbose, quiet):
 @click.option("--title", default="Transcription", help="Score title.")
 @click.option("--composer", default="", help="Composer name.")
 @click.option("--skip-separation", is_flag=True, help="Skip source separation.")
-@click.option("--skip-satb", is_flag=True, help="Skip MVSEP SATB splitting.")
+@click.option("--skip-satb", is_flag=True, help="Keep vocals as one stem (no voice-part split).")
+@click.option("--satb-backend", type=click.Choice(SATB_BACKENDS), default="sepacap",
+              show_default=True,
+              help="Voice-part splitter: local SepACap model, MVSEP cloud API, or none.")
 @click.option("--mvsep-api-key", envvar="MVSEP_API_KEY", default=None)
 @click.option("--device", default="cpu", help="Torch device (cpu/cuda).")
 @click.option("--onset-threshold", default=None, type=float,
@@ -95,7 +99,7 @@ def main(ctx, verbose, quiet):
               help="Override key signature (e.g. 'G major', 'F# minor').")
 @click.pass_context
 def transcribe(ctx, audio, output, output_format, title, composer,
-               skip_separation, skip_satb, mvsep_api_key, device,
+               skip_separation, skip_satb, satb_backend, mvsep_api_key, device,
                onset_threshold, frame_threshold, monophonic, input_is_voice,
                vocal_profile, quantize, tempo, time_sig, detect_key, set_key):
     """Full pipeline: audio → sheet music.
@@ -111,6 +115,7 @@ def transcribe(ctx, audio, output, output_format, title, composer,
             title=title, composer=composer,
             skip_separation=skip_separation,
             skip_satb=skip_satb,
+            satb_backend=satb_backend,
             mvsep_api_key=mvsep_api_key,
             device=device,
             onset_threshold=onset_threshold,
@@ -138,13 +143,15 @@ def transcribe(ctx, audio, output, output_format, title, composer,
               default=None, help="Output directory (default: alongside input).")
 @click.option("--device", default="cpu")
 @click.option("--skip-satb", is_flag=True)
+@click.option("--satb-backend", type=click.Choice(SATB_BACKENDS), default="sepacap",
+              show_default=True)
 @click.option("--mvsep-api-key", envvar="MVSEP_API_KEY", default=None)
 @click.pass_context
-def separate(ctx, audio, output_dir, device, skip_satb, mvsep_api_key):
+def separate(ctx, audio, output_dir, device, skip_satb, satb_backend, mvsep_api_key):
     """Stage 1 only: source separation.
 
-    Splits audio into stems (vocals, piano, etc.) using Demucs,
-    optionally followed by MVSEP SATB vocal splitting.
+    Splits audio into stems (vocals, piano, etc.) using Demucs, then splits
+    the vocals into voice parts (SepACap locally, or MVSEP).
     """
     from .separator import separate_choir
 
@@ -154,10 +161,42 @@ def separate(ctx, audio, output_dir, device, skip_satb, mvsep_api_key):
     try:
         stems = separate_choir(
             audio, output_dir,
+            satb_backend=satb_backend,
             mvsep_api_key=mvsep_api_key,
             device=device,
             skip_satb=skip_satb,
         )
+        _output({
+            "ok": True,
+            "stems": {name: str(path) for name, path in stems.items()},
+        })
+    except Exception as e:
+        _error(str(e))
+
+
+# ── split-voices ──────────────────────────────────────────────────────────────
+
+
+@main.command("split-voices")
+@click.argument("audio", type=click.Path(exists=True, path_type=Path))
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=None, help="Output directory (default: alongside input).")
+@click.option("--device", default="cpu")
+@click.option("--keep-silent", is_flag=True, help="Also write voices the model left silent.")
+@click.pass_context
+def split_voices(ctx, audio, output_dir, device, keep_silent):
+    """Split an a cappella / vocal recording into voice parts with SepACap.
+
+    Input should already be vocals-only (e.g. a Demucs ``vocals`` stem).
+    Writes lead/soprano/alto/tenor/bass WAVs.
+    """
+    from .sepacap import sepacap_separate
+
+    if output_dir is None:
+        output_dir = audio.parent / f"{audio.stem}_voices"
+
+    try:
+        stems = sepacap_separate(audio, output_dir, device=device, keep_silent=keep_silent)
         _output({
             "ok": True,
             "stems": {name: str(path) for name, path in stems.items()},

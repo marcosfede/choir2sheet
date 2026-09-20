@@ -24,6 +24,7 @@ def full_pipeline(
     # Separation options
     skip_separation: bool = False,
     skip_satb: bool = False,
+    satb_backend: str = "sepacap",
     mvsep_api_key: Optional[str] = None,
     device: str = "cpu",
     # Transcription options (None = use the per-stem profile)
@@ -67,6 +68,7 @@ def full_pipeline(
             stems = separate_choir(
                 audio_path,
                 work_dir,
+                satb_backend=satb_backend,
                 mvsep_api_key=mvsep_api_key,
                 device=device,
                 skip_satb=skip_satb,
