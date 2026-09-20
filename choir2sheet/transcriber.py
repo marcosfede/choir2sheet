@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import sys
 from pathlib import Path
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +53,16 @@ def transcribe_to_midi(
 
     logger.info("Transcribing %s with Basic Pitch…", audio_path.name)
 
-    model_output, midi_data, note_events = predict(
-        str(audio_path),
-        onset_threshold=onset_threshold,
-        frame_threshold=frame_threshold,
-        minimum_note_length=minimum_note_length,
-        minimum_frequency=minimum_frequency,
-        maximum_frequency=maximum_frequency,
-    )
+    # Basic Pitch prints progress to stdout, which must stay JSON-only.
+    with contextlib.redirect_stdout(sys.stderr):
+        model_output, midi_data, note_events = predict(
+            str(audio_path),
+            onset_threshold=onset_threshold,
+            frame_threshold=frame_threshold,
+            minimum_note_length=minimum_note_length,
+            minimum_frequency=minimum_frequency,
+            maximum_frequency=maximum_frequency,
+        )
 
     midi_data.write(str(output_path))
     logger.info("MIDI written to %s (%d notes)", output_path, len(note_events))

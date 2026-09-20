@@ -6,11 +6,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from music21 import stream
 
 from .score import build_score, export_score
-from .separator import run_demucs, separate_choir, DEMUCS_MODEL_6S
-from .transcriber import transcribe_stems, transcribe_to_midi
+from .separator import run_demucs, separate_choir
+from .transcriber import transcribe_stems
 
 logger = logging.getLogger(__name__)
 

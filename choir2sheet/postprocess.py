@@ -285,17 +285,12 @@ def quantize_midi(
     output_format : str | None
         Export format. Inferred from extension if None.
     """
-    from .score import export_score, EXPORT_FORMATS
+    from .score import export_score
 
     score = converter.parse(str(midi_path))
     quantized, result = quantize_score(
         score, tempo_bpm=tempo_bpm, time_sig=time_sig,
     )
 
-    output_path = Path(output_path)
-    if output_format is None:
-        ext = output_path.suffix.lstrip(".").lower()
-        output_format = EXPORT_FORMATS.get(ext, "musicxml")
-
-    export_score(quantized, output_path, fmt=output_format)
+    output_path = export_score(quantized, Path(output_path), fmt=output_format)
     return output_path, result

@@ -34,7 +34,9 @@ def setup_basic_pitch() -> bool:
     logger.info("Setting up Basic Pitch model...")
     try:
         from basic_pitch.inference import predict
-        import tempfile, numpy as np, soundfile as sf
+        import tempfile
+        import numpy as np
+        import soundfile as sf
 
         # Generate a tiny dummy audio to trigger model download
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as f:
@@ -75,7 +77,7 @@ def setup_fluidsynth() -> bool:
 
     # Check binary
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["fluidsynth", "--version"],
             capture_output=True, text=True, timeout=5,
         )
@@ -122,7 +124,7 @@ def setup_fluidsynth() -> bool:
 
     # Check Python binding
     try:
-        import fluidsynth
+        import fluidsynth  # noqa: F401
         logger.info("  pyfluidsynth: OK")
     except ImportError:
         logger.warning(
