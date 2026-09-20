@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>choir2sheet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<style>
+  :root {
+    --chrome:#3a3a3c; --chrome2:#2f2f31; --chrome3:#262628; --edge:#1c1c1e; --hair:#4a4a4d;
+    --fg:#e6e6e8; --dim:#9a9a9f; --lcd:#0f1a14; --lcdfg:#c7f0d2; --blue:#2f7cf6;
+    --mute:#4ea3ff; --solo:#f6c445; --paper:#fff;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { font:12.5px/1.3 -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif; background:var(--chrome2); color:var(--fg);
+         display:grid; grid-template-rows:56px 1fr; grid-template-columns:240px 1fr; user-select:none; }
+  button { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; }
+
+  /* ── control bar (GarageBand top bar) ── */
+  #ctl { grid-column:1 / -1; display:flex; align-items:center; gap:6px; padding:0 14px;
+         background:linear-gradient(#444447,#38383a); border-bottom:1px solid var(--edge); box-shadow:0 1px 0 #4d4d50 inset; }
+  .tb { height:30px; min-width:34px; padding:0 10px; border-radius:6px; background:#4d4d50; box-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 1px 1px rgba(0,0,0,.4);
+        display:inline-grid; place-items:center; font-size:14px; color:#e9e9eb; }
+  .tb:hover { background:#585859; }
+  .tb:active, .tb.on { background:#2a2a2c; color:#fff; box-shadow:0 1px 2px rgba(0,0,0,.6) inset; }
+  .tb.on { color:var(--blue); }
+  #play.on { color:#8bd17c; }
+  .tb.small { font-size:12px; padding:0 8px; }
+  .grp { display:inline-flex; gap:1px; }
+  .grp .tb { border-radius:0; }
+  .grp .tb:first-child { border-radius:6px 0 0 6px; } .grp .tb:last-child { border-radius:0 6px 6px 0; }
+  .spacer { flex:1; }
+
+  #lcd { display:flex; align-items:stretch; height:38px; border-radius:7px; background:var(--lcd); color:var(--lcdfg);
+         box-shadow:0 2px 6px rgba(0,0,0,.6) inset, 0 0 0 1px #1a2a1f; overflow:hidden; font-variant-numeric:tabular-nums; margin:0 10px; }
+  #lcd .cell { display:flex; flex-direction:column; justify-content:center; padding:0 16px; border-right:1px solid #1f3327; min-width:96px; }
+  #lcd .cell:last-child { border-right:0; }
+  #lcd .big { font-size:19px; letter-spacing:.03em; line-height:1; }
+  #lcd .lbl { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#6fae85; margin-top:3px; }
+  #lcd .cell.click { cursor:ns-resize; }
+  #lcd .cell.click:hover { background:#142219; }
+  #lcd .row { display:flex; align-items:baseline; gap:6px; }
+  #lcd .row small { font-size:11px; color:#8fcaa2; }
+  #lcd .row .step { font-size:11px; color:#8fcaa2; padding:0 3px; cursor:pointer; }
+  #lcd .row .step:hover { color:#fff; }
+
+  .seg { display:inline-flex; background:#2a2a2c; border-radius:6px; padding:2px; box-shadow:0 1px 1px rgba(0,0,0,.5) inset; }
+  .seg button { height:26px; padding:0 12px; border-radius:5px; color:var(--dim); font-size:12px; }
+  .seg button.on { background:#5a5a5e; color:#fff; box-shadow:0 1px 1px rgba(0,0,0,.4); }
+  .seg button:disabled { opacity:.35; cursor:default; }
+
+  /* ── track headers (GarageBand left column) ── */
+  #tracks { background:var(--chrome3); border-right:1px solid var(--edge); overflow-y:auto; display:flex; flex-direction:column; }
+  #tracks .hdr { height:28px; display:flex; align-items:center; padding:0 12px; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);
+                 border-bottom:1px solid var(--edge); background:var(--chrome2); position:sticky; top:0; }
+  .trk { position:relative; display:grid; grid-template-columns:38px 1fr; grid-template-rows:auto auto; column-gap:10px; row-gap:6px; align-items:center;
+         padding:10px 12px 10px 10px; border-bottom:1px solid var(--edge); background:linear-gradient(#333336,#2c2c2f); box-shadow:0 1px 0 #3d3d40 inset; }
+  .trk::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--c); }
+  .trk.selected { background:linear-gradient(#4a4a4e,#404043); }
+  .trk.off { opacity:.55; }
+  .trk .ico { grid-row:1 / 3; width:38px; height:38px; border-radius:8px; background:radial-gradient(circle at 30% 30%, #6a6a6e, #3a3a3d); box-shadow:0 1px 2px rgba(0,0,0,.6);
+              display:grid; place-items:center; font-size:18px; color:var(--c); }
+  .trk .name { font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .trk .name small { display:block; font-weight:400; font-size:10.5px; color:var(--dim); margin-top:1px; }
+  .trk .ctl { display:flex; align-items:center; gap:6px; }
+  .rb { width:22px; height:20px; border-radius:4px; background:#4a4a4e; font-size:10px; font-weight:700; color:#cfcfd3; box-shadow:0 1px 1px rgba(0,0,0,.5);
+        display:grid; place-items:center; }
+  .rb:hover { background:#57575b; }
+  .rb.m.on { background:var(--mute); color:#08213f; }
+  .rb.s.on { background:var(--solo); color:#3b2a00; }
+  .fader { -webkit-appearance:none; appearance:none; flex:1; height:4px; background:#1e1e20; border-radius:2px; outline:none; box-shadow:0 1px 0 #3d3d40; }
+  .fader::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:10px; border-radius:2px; background:linear-gradient(#e8e8ea,#b9b9bd); box-shadow:0 1px 2px rgba(0,0,0,.7); cursor:pointer; }
+  .fader::-moz-range-thumb { width:16px; height:10px; border-radius:2px; border:0; background:#ccc; }
+  .trk .meter { position:absolute; right:12px; bottom:3px; left:58px; height:3px; background:#1e1e20; border-radius:1px; overflow:hidden; }
+  .trk .meter i { display:block; height:100%; width:0; background:linear-gradient(90deg,#4fd06a,#d7e04a 70%,#f0553f); }
+  #tracks .foot { margin-top:auto; padding:10px 12px; color:var(--dim); font-size:11px; line-height:1.5; border-top:1px solid var(--edge); }
+  #tracks .foot kbd { background:#4a4a4e; border-radius:3px; padding:0 4px; font:inherit; font-size:10px; color:#ddd; }
+
+  /* ── arrangement area = the score ── */
+  #stage { position:relative; overflow:auto; background:#1e1e20; }
+  #paper { position:relative; background:var(--paper); margin:22px auto; max-width:1180px; padding:26px 30px; box-shadow:0 6px 30px rgba(0,0,0,.6); border-radius:3px; }
+  #paper.busy { cursor:progress; }
+  #osmd { position:relative; }
+  #osmd svg { display:block; }
+  #hilite { position:absolute; top:26px; left:30px; right:30px; bottom:26px; pointer-events:none; }
+  #hilite .cyc { position:absolute; background:rgba(246,196,69,.16); border-top:2px solid var(--solo); border-bottom:2px solid var(--solo); border-radius:2px; }
+  #hilite .selm { position:absolute; background:rgba(47,124,246,.10); }
+  #toast { position:fixed; right:14px; bottom:12px; background:rgba(20,20,22,.9); color:#ddd; padding:6px 10px; border-radius:6px; font-size:11px; pointer-events:none; opacity:0; transition:opacity .25s; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<div id="ctl">
+  <div class="grp">
+    <button class="tb" id="rewind" title="Go to beginning (Home)">|◀</button>
+    <button class="tb" id="play" title="Play / Stop (Space)">▶</button>
+    <button class="tb" id="cycle" title="Cycle (loop) the selected bars (C)">↻</button>
+  </div>
+  <div class="spacer"></div>
+  <div id="lcd">
+    <div class="cell" id="lcd-bar"><div class="big">1</div><div class="lbl">bar</div></div>
+    <div class="cell" id="lcd-time"><div class="big">0:00.0</div><div class="lbl">time</div></div>
+    <div class="cell click" id="lcd-tempo" title="Playback speed (drag or use −/+)">
+      <div class="row"><span class="step" id="tempo-dn">−</span><span class="big">100</span><small>%</small><span class="step" id="tempo-up">+</span></div><div class="lbl">speed</div></div>
+    <div class="cell" id="lcd-key"><div class="big">—</div><div class="lbl">key</div></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="seg" id="source" title="What you hear: the original recording (separated voices) or the transcribed notes">
+    <button data-src="audio">Recording</button><button data-src="synth">Synth</button>
+  </div>
+  <button class="tb small" id="fit" title="Zoom to fit">Fit</button>
+  <button class="tb" id="full" title="Full screen">⤢</button>
+</div>
+
+<div id="tracks"><div class="hdr">Tracks</div></div>
+
+<div id="stage">
+  <div id="paper" class="busy"><div id="osmd"></div><div id="hilite"></div></div>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.js"></script>
+<script>
+(async function () {
+  const $ = (id) => document.getElementById(id);
+  const toastEl = $('toast'); let toastT;
+  const toast = (t) => { toastEl.textContent = t; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 1800); };
+  const COLORS = ['#4ea3ff', '#ff6b8a', '#57d38c', '#f6c445', '#c084fc', '#ff9a4d', '#4dd0e1', '#a3e635'];
+  const ICONS = { soprano: '♀', alto: '♀', tenor: '♂', bass: '♂', lead: '★' };
+  const fmt = (s, tenths) => { const m = Math.floor(s / 60), sec = s % 60;
+    return `${m}:${tenths ? sec.toFixed(1).padStart(4, '0') : String(Math.floor(sec)).padStart(2, '0')}`; };
+
+  let measures = [];      // [{n, start, end (sec), rects:[{x,y,w,h}]}] in #osmd pixel coords
+  let cycle = null;       // {a, b} measure indices (inclusive) — the selection
+  let cycleOn = false;
+
+  const manifest = await (await fetch('manifest.json')).json();
+  document.title = manifest.title + ' – choir2sheet';
+
+  // ── Score + MIDI ─────────────────────────────────────────────────────
+  const midi = new Midi(await (await fetch(manifest.midi)).arrayBuffer());
+  const ppq = midi.header.ppq;
+  const duration = midi.duration;
+  const wnToSec = (wn) => midi.header.ticksToSeconds(wn * 4 * ppq);   // whole-note units → seconds (honours tempo map)
+  const partNames = manifest.parts || [];
+  const midiTracks = midi.tracks
+    .map((t, i) => ({ t, name: (partNames.length === midi.tracks.length && partNames[i]) || t.name || `Part ${i + 1}` }))
+    .filter(x => x.t.notes.length > 0);
+
+  const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay('osmd', {
+    autoResize: false, backend: 'svg', drawTitle: true, drawComposer: true, drawPartNames: true, drawMeasureNumbers: true,
+    followCursor: true, cursorsOptions: [{ type: 0, color: '#2f7cf6', alpha: 0.28, follow: true }],
+  });
+  await osmd.load(manifest.score);
+  const render = () => { osmd.render(); osmd.cursor.show(); layoutMeasures(); };
+  const fitZoom = () => { const w = $('paper').clientWidth - 60; osmd.zoom = Math.max(0.5, Math.min(1.1, w / 1150)); };
+  fitZoom(); render(); osmd.cursor.reset();
+  $('paper').classList.remove('busy');
+  if (osmd.Sheet.Title) $('lcd-key').firstChild.textContent = keyName();
+  function keyName() {
+    try { const k = osmd.Sheet.SourceMeasures[0].FirstInstructionsStaffEntries[0].Instructions.find(i => i.keyTypeOriginal !== undefined);
+      const fifths = k.keyTypeOriginal, mode = k.mode;  // mode 0 = major
+      const maj = ['C','G','D','A','E','B','F#','C#'], majF = ['C','F','Bb','Eb','Ab','Db','Gb','Cb'];
+      const min = ['A','E','B','F#','C#','G#','D#','A#'], minF = ['A','D','G','C','F','Bb','Eb','Ab'];
+      const t = fifths >= 0 ? (mode === 0 ? maj : min)[fifths] : (mode === 0 ? majF : minF)[-fifths];
+      return t ? `${t} ${mode === 0 ? 'maj' : 'min'}` : '—'; } catch (e) { return '—'; }
+  }
+
+  function layoutMeasures() {
+    const u = osmd.zoom * 10;  // OSMD units → px
+    const byIdx = new Map();
+    for (const gm of osmd.GraphicSheet.MeasureList.flat()) {
+      if (!gm || !gm.parentSourceMeasure || !gm.PositionAndShape) continue;
+      const sm = gm.parentSourceMeasure, i = sm.MeasureNumber;
+      const b = gm.PositionAndShape;
+      const staffH = (gm.ParentStaffLine && gm.ParentStaffLine.PositionAndShape.Size.height) || 4;
+      const r = { x: b.AbsolutePosition.x * u, y: b.AbsolutePosition.y * u, w: b.Size.width * u, h: staffH * u };
+      let m = byIdx.get(i);
+      if (!m) { m = { n: i, start: wnToSec(sm.AbsoluteTimestamp.RealValue), end: wnToSec(sm.AbsoluteTimestamp.RealValue + sm.Duration.RealValue), rects: [] }; byIdx.set(i, m); }
+      m.rects.push(r);
+    }
+    measures = [...byIdx.values()].sort((a, b) => a.start - b.start);
+    // merge the staff rects of a measure into one system-tall rect per system
+    for (const m of measures) {
+      const systems = new Map();
+      for (const r of m.rects) { const k = Math.round(r.x); const s = systems.get(k);
+        if (!s) systems.set(k, { ...r, y2: r.y + r.h }); else { s.y = Math.min(s.y, r.y); s.y2 = Math.max(s.y2, r.y + r.h); s.w = Math.max(s.w, r.w); } }
+      m.rects = [...systems.values()].map(s => ({ x: s.x, y: s.y - 6, w: s.w, h: s.y2 - s.y + 12 }));
+    }
+    drawHilite();
+  }
+  const measureAt = (sec) => { let m = measures[0]; for (const x of measures) { if (x.start <= sec + 1 / (2 * Tone.Transport.PPQ)) m = x; else break; } return m; };
+  function measureAtPoint(px, py) {
+    let best = null, bd = Infinity;
+    for (const m of measures) for (const r of m.rects) {
+      const dx = px < r.x ? r.x - px : px > r.x + r.w ? px - r.x - r.w : 0;
+      const dy = py < r.y ? r.y - py : py > r.y + r.h ? py - r.y - r.h : 0;
+      const d = dx * dx + dy * dy * 4; if (d < bd) { bd = d; best = { m, r }; }
+    }
+    return best;
+  }
+
+  // ── Tracks ────────────────────────────────────────────────────────────
+  const audioFiles = { ...(manifest.audio || {}) };
+  const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const takeAudioFor = (name) => { const n = norm(name);
+    const key = Object.keys(audioFiles).find(k => n.includes(norm(k)) || norm(k).includes(n));
+    if (!key) return null; const url = audioFiles[key]; delete audioFiles[key]; return { key, url }; };
+
+  const master = new Tone.Volume(-3).toDestination();
+  const verb = new Tone.Reverb({ decay: 1.4, wet: 0.15 }).connect(master);
+  const tracks = [];
+  let source = 'synth';
+
+  for (const [i, { t, name }] of midiTracks.entries()) {
+    const tr = { name, color: COLORS[i % COLORS.length], mute: false, solo: false, gain: 0.8, pulse: 0,
+                 bus: new Tone.Channel().connect(verb), synth: null, part: null, player: null, stem: null };
+    tr.synth = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'fatsawtooth', count: 2, spread: 10 },
+      envelope: { attack: 0.03, decay: 0.2, sustain: 0.5, release: 0.25 }, volume: -10 }).connect(tr.bus);
+    tr.synth.maxPolyphony = 12;
+    tr.part = new Tone.Part((time, n) => { if (source === 'synth') { tr.synth.triggerAttackRelease(n.name, Math.max(0.06, n.duration), time, n.velocity); tr.pulse = 1; } },
+                            t.notes.map(n => [n.time, n])).start(0);
+    const a = takeAudioFor(name);
+    if (a) { tr.stem = a.key; tr.player = new Tone.Player({ url: a.url }).connect(tr.bus); }
+    tracks.push(tr);
+  }
+  for (const [j, [key, url]] of Object.entries(audioFiles).entries()) {  // stems with no matching staff
+    const tr = { name: key, color: COLORS[(midiTracks.length + j) % COLORS.length], mute: false, solo: false, gain: 0.8, pulse: 0,
+                 bus: new Tone.Channel().connect(master), stem: key, player: null, synth: null, part: null };
+    tr.player = new Tone.Player({ url }).connect(tr.bus);
+    tracks.push(tr);
+  }
+  const hasAudio = tracks.some(t => t.player);
+  if (hasAudio) source = 'audio'; else $('source').querySelector('[data-src=audio]').disabled = true;
+
+  const audible = (tr) => !tr.mute && (!tracks.some(x => x.solo) || tr.solo);
+  function applyMix() {
+    tracks.forEach(tr => {
+      const on = audible(tr) && (source === 'synth' ? !!tr.synth : !!tr.player);
+      tr.bus.volume.value = tr.gain > 0 ? 20 * Math.log10(tr.gain / 0.8) : -Infinity;
+      tr.bus.mute = !on;
+      if (tr.player) tr.player.mute = source !== 'audio';
+      if (tr.synth) { tr.synth.volume.value = source === 'synth' ? -10 : -Infinity; if (source !== 'synth') tr.synth.releaseAll(); }
+      tr.el.classList.toggle('off', !audible(tr));
+      tr.el.querySelector('.m').classList.toggle('on', tr.mute);
+      tr.el.querySelector('.s').classList.toggle('on', tr.solo);
+    });
+    $('source').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.src === source));
+  }
+  const list = $('tracks');
+  tracks.forEach(tr => {
+    const el = document.createElement('div'); el.className = 'trk'; el.style.setProperty('--c', tr.color); tr.el = el;
+    const sub = tr.synth && tr.player ? `notes + ${tr.stem}` : tr.synth ? 'notes only' : `${tr.stem} (audio only)`;
+    el.innerHTML = `<div class="ico">${ICONS[norm(tr.name)] || '♪'}</div>
+      <div class="name" title="${tr.name}">${tr.name}<small>${sub}</small></div>
+      <div class="ctl"><button class="rb m" title="Mute">M</button><button class="rb s" title="Solo">S</button>
+        <input class="fader" type="range" min="0" max="100" value="80" title="Volume"></div>
+      <div class="meter"><i></i></div>`;
+    el.querySelector('.m').onclick = (e) => { e.stopPropagation(); tr.mute = !tr.mute; applyMix(); };
+    el.querySelector('.s').onclick = (e) => { e.stopPropagation(); tr.solo = !tr.solo; applyMix(); };
+    el.querySelector('.fader').oninput = (e) => { tr.gain = +e.target.value / 100; applyMix(); };
+    el.onclick = () => { tracks.forEach(x => x.el.classList.toggle('selected', x === tr)); };
+    list.appendChild(el);
+  });
+  const foot = document.createElement('div'); foot.className = 'foot';
+  foot.innerHTML = `<kbd>Space</kbd> play · <kbd>C</kbd> cycle · <kbd>←</kbd><kbd>→</kbd> bar · click a bar to jump · drag across bars to loop`;
+  list.appendChild(foot);
+  $('source').onclick = (e) => { const b = e.target.closest('button'); if (!b || b.disabled) return; source = b.dataset.src; applyMix(); };
+  applyMix();
+  await Tone.loaded();
+
+  // ── Transport ────────────────────────────────────────────────────────
+  const T = Tone.Transport;
+  T.bpm.value = 120;
+  const pos = () => T.ticks / (2 * T.PPQ);          // "seconds at 100%" — the score clock
+  const setPos = (sec) => { T.ticks = Math.round(sec * 2 * T.PPQ); };
+  let playing = false, speed = 100;
+
+  const releaseAll = () => tracks.forEach(t => t.synth && t.synth.releaseAll());
+  // Stems are driven by hand (not Tone's sync) so that a seek at speed != 100% starts
+  // them at the score position rather than at the transport's elapsed seconds.
+  const stopPlayers = () => tracks.forEach(t => t.player && t.player.state === 'started' && t.player.stop());
+  const startPlayers = () => { const at = pos(); tracks.forEach(t => {
+    if (!t.player || !t.player.loaded || at >= t.player.buffer.duration) return;
+    t.player.playbackRate = speed / 100; t.player.start(undefined, at); }); };
+  function setSpeed(p) {
+    speed = Math.max(40, Math.min(150, Math.round(p / 5) * 5));
+    T.bpm.value = 120 * speed / 100;
+    if (playing) { stopPlayers(); startPlayers(); } else tracks.forEach(t => t.player && (t.player.playbackRate = speed / 100));
+    $('lcd-tempo').querySelector('.big').textContent = speed;
+  }
+  const cycleRange = () => cycle ? { a: measures[cycle.a].start, b: measures[cycle.b].end } : null;
+  async function play() {
+    await Tone.start();
+    const r = cycleOn && cycleRange();
+    if (pos() >= duration - 0.01 || (r && (pos() < r.a || pos() >= r.b))) seek(r ? r.a : 0);
+    playing = true; $('play').classList.add('on'); $('play').textContent = '■';
+    T.start(); startPlayers();
+  }
+  function stop() {
+    playing = false; $('play').classList.remove('on'); $('play').textContent = '▶';
+    T.pause(); stopPlayers(); releaseAll();
+  }
+  function seek(sec) {
+    sec = Math.max(0, Math.min(duration, sec));
+    const was = playing; if (was) { T.pause(); stopPlayers(); }
+    releaseAll(); setPos(sec);
+    if (was) { T.start(); startPlayers(); }
+    moveCursorTo(sec);
+  }
+  const cursorSec = () => wnToSec(osmd.cursor.iterator.currentTimeStamp.RealValue);
+  function moveCursorTo(sec) {
+    if (cursorSec() > sec || osmd.cursor.iterator.EndReached) osmd.cursor.reset();
+    let guard = 100000;
+    while (!osmd.cursor.iterator.EndReached && guard--) {
+      const it = osmd.cursor.iterator.clone(); it.moveToNext();
+      if (it.EndReached || wnToSec(it.currentTimeStamp.RealValue) > sec) break;
+      osmd.cursor.next();
+    }
+    osmd.cursor.update();
+  }
+
+  $('play').onclick = () => (playing ? stop() : play());
+  $('rewind').onclick = () => seek(cycleOn && cycle ? measures[cycle.a].start : 0);
+  $('cycle').onclick = () => setCycleOn(!cycleOn);
+  $('tempo-dn').onclick = () => setSpeed(speed - 5);
+  $('tempo-up').onclick = () => setSpeed(speed + 5);
+  { let dragY = null, base = 100; const c = $('lcd-tempo');
+    c.onpointerdown = (e) => { if (e.target.classList.contains('step')) return; dragY = e.clientY; base = speed; c.setPointerCapture(e.pointerId); };
+    c.onpointermove = (e) => { if (dragY !== null) setSpeed(base + (dragY - e.clientY) / 3); };
+    c.onpointerup = () => { dragY = null; }; }
+  $('fit').onclick = () => { fitZoom(); render(); moveCursorTo(pos()); };
+  $('full').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+  window.addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(() => { fitZoom(); render(); moveCursorTo(pos()); }, 200); });
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); playing ? stop() : play(); }
+    else if (e.code === 'Home') seek(0);
+    else if (e.key === 'c' || e.key === 'C') setCycleOn(!cycleOn);
+    else if (e.code === 'ArrowLeft') { const m = measureAt(pos()); const i = measures.indexOf(m); seek(pos() - m.start > 0.3 || i === 0 ? m.start : measures[i - 1].start); }
+    else if (e.code === 'ArrowRight') { const i = measures.indexOf(measureAt(pos())); if (i < measures.length - 1) seek(measures[i + 1].start); }
+    else if (e.key === '-' ) setSpeed(speed - 5); else if (e.key === '=' || e.key === '+') setSpeed(speed + 5);
+  });
+
+  // ── Score interaction: click a bar → jump; drag across bars → select/cycle ──
+  function setCycleOn(on) {
+    if (on && !cycle) { toast('Drag across bars in the score to choose what to cycle'); return; }
+    cycleOn = on; $('cycle').classList.toggle('on', cycleOn); drawHilite();
+    const r = cycleOn && cycleRange(); if (r && (pos() < r.a || pos() >= r.b)) seek(r.a);
+  }
+  function drawHilite() {
+    const h = $('hilite'); h.innerHTML = '';
+    if (!cycle) return;
+    for (let i = cycle.a; i <= cycle.b; i++) for (const r of measures[i].rects) {
+      const d = document.createElement('div'); d.className = cycleOn ? 'cyc' : 'selm';
+      d.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`; h.appendChild(d);
+    }
+  }
+  const osmdEl = $('osmd');
+  const localPt = (e) => { const b = osmdEl.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  let dragFrom = null, dragged = false;
+  osmdEl.onpointerdown = (e) => { if (e.button !== 0) return; const hit = measureAtPoint(...localPt(e)); if (!hit) return;
+    dragFrom = measures.indexOf(hit.m); dragged = false; osmdEl.setPointerCapture(e.pointerId); };
+  osmdEl.onpointermove = (e) => { if (dragFrom === null) return; const hit = measureAtPoint(...localPt(e)); if (!hit) return;
+    const to = measures.indexOf(hit.m); if (to !== dragFrom) dragged = true;
+    if (dragged) { cycle = { a: Math.min(dragFrom, to), b: Math.max(dragFrom, to) }; drawHilite(); } };
+  osmdEl.onpointerup = (e) => {
+    if (dragFrom === null) return;
+    if (!dragged) { const hit = measureAtPoint(...localPt(e)); if (hit) seek(hit.m.start); cycle = null; cycleOn = false; $('cycle').classList.remove('on'); drawHilite(); }
+    else { cycleOn = true; $('cycle').classList.add('on'); drawHilite(); const r = cycleRange(); if (pos() < r.a || pos() >= r.b) seek(r.a); }
+    dragFrom = null;
+  };
+
+  // ── Frame loop ────────────────────────────────────────────────────────
+  const lcdBar = $('lcd-bar').firstChild, lcdTime = $('lcd-time').firstChild;
+  function frame() {
+    const t = pos();
+    if (playing) {
+      const r = cycleOn && cycleRange();
+      if (r && t >= r.b - 0.005) seek(r.a);
+      else if (t >= duration) { stop(); seek(0); }
+      else moveCursorTo(t);
+    }
+    lcdTime.textContent = fmt(t, true);
+    const m = measureAt(t); if (m) lcdBar.textContent = m.n;
+    tracks.forEach(tr => {
+      let lvl = 0;
+      if (audible(tr)) { if (source === 'synth') { tr.pulse *= 0.86; lvl = tr.pulse; } else if (tr.player && playing) lvl = 0.55 + 0.1 * Math.sin(t * 9 + tr.color.length); }
+      tr.el.querySelector('.meter i').style.width = (lvl * 100) + '%';
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+})().catch(err => { document.getElementById('paper').innerHTML = `<pre style="color:#c00">${err && err.stack || err}</pre>`; console.error(err); });
+</script>
+</body>
+</html>

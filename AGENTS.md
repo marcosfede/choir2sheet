@@ -79,6 +79,24 @@ choir2sheet split-voices <vocals.wav> [-o voices/] [--device cpu] [--keep-silent
 Weights (~160 MB) download from Hugging Face `Tino3141/sepacap` on first use. Output is 24 kHz.
 CPU speed is roughly 4× real time.
 
+### `preview` — Local webapp: notation + per-track MIDI playback
+
+```bash
+choir2sheet preview <score.musicxml|.mid|.abc> [--audio-dir stems/] [--port 8765] [--no-browser] [--work-dir DIR]
+```
+
+Standalone (no separation/transcription needed): any music21-readable score is exported to
+MusicXML + MIDI and served with a single-page app (OpenSheetMusicDisplay + Tone.js from CDN).
+GarageBand-style UI: track headers (mute/solo/volume per part) on the left, score as the
+arrangement area (click a bar to jump, drag across bars to cycle/loop), transport + LCD
+(bar / time / speed % / key) on top, and a Recording|Synth switch when `--audio-dir` stems
+match part names (stem and synth are one track, kept on one transport clock). Prints the URL as JSON,
+then blocks serving until Ctrl-C.
+
+```json
+{ "ok": true, "url": "http://127.0.0.1:8765/", "score": "score.musicxml", "tracks_midi": "/files/score.mid", "audio": { "soprano": "/files/audio/soprano.wav" } }
+```
+
 ### `midi-transcribe` — Audio → MIDI
 
 ```bash
