@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import webbrowser
 from pathlib import Path
 
 import click
@@ -203,6 +204,56 @@ def split_voices(ctx, audio, output_dir, device, keep_silent):
         })
     except Exception as e:
         _error(str(e))
+
+
+# ── preview ───────────────────────────────────────────────────────────────────
+
+
+@main.command("preview")
+@click.argument("score", type=click.Path(exists=True, path_type=Path))
+@click.option("--audio-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+              default=None, help="Directory of audio files (e.g. separated stems) to play alongside.")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8765, show_default=True, help="0 picks a free port.")
+@click.option("--no-browser", is_flag=True, help="Don't open the browser.")
+@click.option("--work-dir", type=click.Path(path_type=Path), default=None,
+              help="Where exported MusicXML/MIDI go (default: .choir2sheet_preview next to score).")
+@click.pass_context
+def preview(ctx, score, audio_dir, host, port, no_browser, work_dir):
+    """Open a local webapp to view a score and play its parts as MIDI tracks.
+
+    Accepts any music21-readable score (MusicXML, MIDI, ABC, ...). Each part
+    is a track with solo/mute; the notation cursor follows playback.
+    Prints the server URL as JSON, then serves until Ctrl-C.
+    """
+    from .preview import make_server, prepare_preview
+
+    if work_dir is None:
+        work_dir = score.parent / ".choir2sheet_preview"
+    try:
+        prepared = prepare_preview(score, work_dir, audio_dir=audio_dir)
+        server = make_server(prepared["files"], prepared["manifest"], host=host, port=port)
+    except Exception as e:
+        _error(str(e))
+        return
+
+    url = f"http://{server.server_address[0]}:{server.server_address[1]}/"
+    _output({
+        "ok": True,
+        "url": url,
+        "score": str(score),
+        "tracks_midi": prepared["manifest"]["midi"],
+        "audio": prepared["manifest"]["audio"],
+    })
+    sys.stdout.flush()
+    if not no_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
 
 
 # ── midi-transcribe ──────────────────────────────────────────────────
