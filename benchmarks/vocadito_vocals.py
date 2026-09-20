@@ -23,7 +23,7 @@ import pretty_midi
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from choir2sheet.transcriber import transcribe_to_midi
+from choir2sheet.transcriber import VOCAL_PROFILE, transcribe_with_profile
 from choir2sheet.metrics import NoteEvent, TranscriptionMetrics, notes_to_mir_eval
 
 logging.basicConfig(
@@ -220,12 +220,7 @@ def main():
         # Transcribe
         est_midi_path = midi_dir / f"{track_id}.mid"
         try:
-            transcribe_to_midi(
-                wav_path, est_midi_path,
-                onset_threshold=0.5,
-                frame_threshold=0.3,
-                minimum_note_length=58.0,
-            )
+            transcribe_with_profile(wav_path, est_midi_path, VOCAL_PROFILE)
         except Exception as e:
             logger.error("Failed to transcribe %s: %s", track_id, e)
             continue

@@ -74,8 +74,16 @@ def main(ctx, verbose, quiet):
 @click.option("--skip-satb", is_flag=True, help="Skip MVSEP SATB splitting.")
 @click.option("--mvsep-api-key", envvar="MVSEP_API_KEY", default=None)
 @click.option("--device", default="cpu", help="Torch device (cpu/cuda).")
-@click.option("--onset-threshold", default=0.5, type=float)
-@click.option("--frame-threshold", default=0.3, type=float)
+@click.option("--onset-threshold", default=None, type=float,
+              help="Override the per-stem profile (vocal stems: 0.8, others: 0.5).")
+@click.option("--frame-threshold", default=None, type=float,
+              help="Override the per-stem profile (default 0.3).")
+@click.option("--monophonic/--polyphonic", default=None,
+              help="Force one-note-at-a-time cleanup on/off for every stem.")
+@click.option("--voice", "input_is_voice", is_flag=True,
+              help="With --skip-separation: treat the input as a single voice.")
+@click.option("--vocal-profile/--no-vocal-profile", default=True,
+              help="Use the VOCADITO-tuned settings for vocal stems.")
 @click.option("--quantize/--no-quantize", default=False,
               help="Apply rhythmic quantization.")
 @click.option("--tempo", default=None, type=float,
@@ -88,8 +96,8 @@ def main(ctx, verbose, quiet):
 @click.pass_context
 def transcribe(ctx, audio, output, output_format, title, composer,
                skip_separation, skip_satb, mvsep_api_key, device,
-               onset_threshold, frame_threshold,
-               quantize, tempo, time_sig, detect_key, set_key):
+               onset_threshold, frame_threshold, monophonic, input_is_voice,
+               vocal_profile, quantize, tempo, time_sig, detect_key, set_key):
     """Full pipeline: audio → sheet music.
 
     Outputs JSON with file paths and optional analysis results.
@@ -107,6 +115,9 @@ def transcribe(ctx, audio, output, output_format, title, composer,
             device=device,
             onset_threshold=onset_threshold,
             frame_threshold=frame_threshold,
+            monophonic=monophonic,
+            input_is_voice=input_is_voice,
+            vocal_profile=vocal_profile,
             quantize=quantize,
             tempo_bpm=tempo,
             time_sig=time_sig,
@@ -169,9 +180,11 @@ def separate(ctx, audio, output_dir, device, skip_satb, mvsep_api_key):
               help="Minimum frequency in Hz.")
 @click.option("--max-freq", default=None, type=float,
               help="Maximum frequency in Hz.")
+@click.option("--monophonic", is_flag=True,
+              help="Collapse overlapping notes to a single melodic line.")
 @click.pass_context
 def midi_transcribe(ctx, audio, output, onset_threshold, frame_threshold,
-                    minimum_note_length, min_freq, max_freq):
+                    minimum_note_length, min_freq, max_freq, monophonic):
     """Stage 2 only: audio → MIDI transcription (Basic Pitch).
 
     Transcribes a single audio file to MIDI.
@@ -186,6 +199,7 @@ def midi_transcribe(ctx, audio, output, onset_threshold, frame_threshold,
             minimum_note_length=minimum_note_length,
             minimum_frequency=min_freq,
             maximum_frequency=max_freq,
+            monophonic=monophonic,
         )
         # Count notes in output
         import pretty_midi
