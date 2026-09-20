@@ -26,10 +26,13 @@ def full_pipeline(
     skip_satb: bool = False,
     mvsep_api_key: Optional[str] = None,
     device: str = "cpu",
-    # Transcription options
-    onset_threshold: float = 0.5,
-    frame_threshold: float = 0.3,
-    minimum_note_length: float = 58.0,
+    # Transcription options (None = use the per-stem profile)
+    onset_threshold: float | None = None,
+    frame_threshold: float | None = None,
+    minimum_note_length: float | None = None,
+    monophonic: bool | None = None,
+    vocal_profile: bool = True,
+    input_is_voice: bool = False,
     # Post-processing options
     quantize: bool = False,
     tempo_bpm: float | None = None,
@@ -51,7 +54,7 @@ def full_pipeline(
     # ── Stage 1: Separation ──────────────────────────────────────────
     if skip_separation:
         logger.info("Skipping separation; transcribing raw audio directly")
-        stems = {"audio": audio_path}
+        stems = {"vocals" if input_is_voice else "audio": audio_path}
     else:
         logger.info("Stage 1: Source separation")
         if skip_satb:
@@ -79,9 +82,11 @@ def full_pipeline(
     midi_files = transcribe_stems(
         stems,
         work_dir / "midi",
+        vocal_profile=vocal_profile,
         onset_threshold=onset_threshold,
         frame_threshold=frame_threshold,
         minimum_note_length=minimum_note_length,
+        monophonic=monophonic,
     )
     if not midi_files:
         raise RuntimeError("No stems were successfully transcribed to MIDI")
@@ -113,11 +118,19 @@ def full_pipeline(
     # Quantization
     if quantize:
         from .postprocess import quantize_score
+        from .tempo import estimate_tempo
 
+        tempo_source = "manual"
+        if tempo_bpm is None:
+            tempo_bpm = estimate_tempo(audio_path)
+            tempo_source = "estimated"
         score, quant_result = quantize_score(
             score, tempo_bpm=tempo_bpm, time_sig=time_sig,
         )
-        postprocess_results["quantization"] = quant_result.to_dict()
+        postprocess_results["quantization"] = {
+            **quant_result.to_dict(),
+            "tempo_source": tempo_source,
+        }
 
     if postprocess_results:
         result["stages"]["postprocess"] = postprocess_results
@@ -137,8 +150,8 @@ def simple_transcribe(
     *,
     output_format: str | None = None,
     title: str = "Transcription",
-    onset_threshold: float = 0.5,
-    frame_threshold: float = 0.3,
+    onset_threshold: float | None = None,
+    frame_threshold: float | None = None,
 ) -> dict:
     """Simplified pipeline: transcribe a single audio file directly (no separation)."""
     return full_pipeline(

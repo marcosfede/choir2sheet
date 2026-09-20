@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -122,6 +123,7 @@ class QuantizeResult:
     """Result of quantization."""
     tempo_bpm: float
     time_signature: str
+    grid: float           # grid step in quarter lengths (0.25 = 16th note)
     notes_before: int
     notes_after: int
 
@@ -129,9 +131,23 @@ class QuantizeResult:
         return {
             "tempo_bpm": round(self.tempo_bpm, 1),
             "time_signature": self.time_signature,
+            "grid": self.grid,
             "notes_before": self.notes_before,
             "notes_after": self.notes_after,
         }
+
+
+def _source_tempo(score: stream.Score) -> float:
+    """Tempo at which the score's offsets were written (MIDI import), default 120."""
+    marks = score.flatten().getElementsByClass(tempo.MetronomeMark)
+    for mm in marks:
+        if mm.number:
+            return float(mm.number)
+    return 120.0
+
+
+def _snap(value: float, grid: float) -> float:
+    return round(value / grid) * grid
 
 
 def quantize_score(
@@ -139,64 +155,72 @@ def quantize_score(
     *,
     tempo_bpm: float | None = None,
     time_sig: str = "4/4",
-    quantize_durations: bool = True,
+    grid: float = 0.25,
 ) -> tuple[stream.Score, QuantizeResult]:
     """Quantize a score to a beat grid.
 
-    Snaps note onsets and optionally durations to the nearest subdivision
-    of the detected or specified tempo.
+    Offsets are converted to seconds using the score's own tempo (MIDI
+    imports carry one; Basic Pitch writes 120 BPM), re-expressed in quarter
+    notes at ``tempo_bpm``, and both onsets and offsets are snapped to the
+    nearest ``grid`` step. Notes shorter than one grid step are lengthened to
+    a single step so nothing disappears. Finally ``makeNotation`` produces
+    measures, ties across barlines and rests.
 
     Parameters
     ----------
-    score : music21.stream.Score
-        The score to quantize.
     tempo_bpm : float | None
-        Tempo in BPM. If None, estimates from the score.
+        Target tempo. Estimated from inter-onset intervals if omitted.
     time_sig : str
         Time signature string (e.g. "4/4", "3/4", "6/8").
-    quantize_durations : bool
-        Also quantize note durations to standard rhythmic values.
-
-    Returns
-    -------
-    tuple[stream.Score, QuantizeResult]
+    grid : float
+        Smallest rhythmic unit in quarter lengths (0.25 = 16th, 0.5 = 8th).
     """
+    src_bpm = _source_tempo(score)
+    sec_per_ql = 60.0 / src_bpm
+
     notes_before = len(score.flatten().notes)
 
-    # Set time signature on all parts
-    ts = meter.TimeSignature(time_sig)
-    for part in score.parts:
-        existing_ts = part.getElementsByClass(meter.TimeSignature)
-        if not existing_ts:
-            part.insert(0, ts)
-
-    # Estimate tempo if not provided
     if tempo_bpm is None:
-        tempo_bpm = _estimate_tempo(score)
-    logger.info("Using tempo: %.1f BPM", tempo_bpm)
+        onsets = sorted({float(n.offset) * sec_per_ql for n in score.flatten().notes})
+        tempo_bpm = _estimate_tempo(onsets)
+    logger.info("Using tempo: %.1f BPM (source MIDI tempo %.1f)", tempo_bpm, src_bpm)
 
-    # Set tempo marking
-    mm = tempo.MetronomeMark(number=tempo_bpm)
+    scale = sec_per_ql * tempo_bpm / 60.0  # source ql → target ql
+
+    quantized = stream.Score()
+    if score.metadata is not None:
+        quantized.metadata = score.metadata
+
     for part in score.parts:
-        existing_tempo = part.getElementsByClass(tempo.MetronomeMark)
-        if not existing_tempo:
-            part.insert(0, mm)
+        new_part = stream.Part()
+        new_part.id = part.id
+        instr = part.getInstrument(returnDefault=False)
+        if instr is not None:
+            new_part.insert(0, instr)
+        keys = part.flatten().getElementsByClass(key.KeySignature)
+        if keys:
+            new_part.insert(0, keys[0])
+        new_part.insert(0, meter.TimeSignature(time_sig))
+        new_part.insert(0, tempo.MetronomeMark(number=tempo_bpm))
 
-    # music21's makeNotation handles quantization:
-    # - Ties notes across barlines
-    # - Fills rests
-    # - Applies beaming
-    quantized = score.makeNotation()
+        for n in part.flatten().notes:
+            start = _snap(float(n.offset) * scale, grid)
+            end = _snap((float(n.offset) + float(n.quarterLength)) * scale, grid)
+            if end <= start:
+                end = start + grid
+            new_note = copy.deepcopy(n)
+            new_note.quarterLength = end - start
+            new_part.insert(start, new_note)
 
-    if quantize_durations:
-        # Additional pass: snap durations to nearest standard value
-        _snap_durations(quantized)
+        quantized.append(new_part)
 
+    quantized = quantized.makeNotation()
     notes_after = len(quantized.flatten().notes)
 
     result = QuantizeResult(
         tempo_bpm=tempo_bpm,
         time_signature=time_sig,
+        grid=grid,
         notes_before=notes_before,
         notes_after=notes_after,
     )
@@ -205,61 +229,28 @@ def quantize_score(
     return quantized, result
 
 
-def _estimate_tempo(score: stream.Score) -> float:
-    """Estimate tempo from inter-onset intervals."""
+def _estimate_tempo(onsets_sec: list[float]) -> float:
+    """Estimate tempo from inter-onset intervals (in seconds).
+
+    Assumes the most common inter-onset interval is a beat or a simple
+    subdivision of one, and folds the result into 60–180 BPM.
+    """
     import numpy as np
 
-    onsets = []
-    for note in score.flatten().notes:
-        onsets.append(float(note.offset))
+    if len(onsets_sec) < 2:
+        return 120.0
 
-    if len(onsets) < 2:
-        return 120.0  # default
-
-    onsets = sorted(set(onsets))
-    iois = np.diff(onsets)
-    iois = iois[iois > 0.05]  # filter out very short intervals
-
+    iois = np.diff(np.asarray(sorted(onsets_sec)))
+    iois = iois[iois > 0.05]
     if len(iois) == 0:
         return 120.0
 
-    # Median IOI → likely beat duration in quarter-note lengths
-    median_ioi = float(np.median(iois))
-    # Convert quarter-note length to BPM (1 quarter = median_ioi in score time)
-    # In music21, offset is in quarter-note units
-    bpm = 60.0 / median_ioi if median_ioi > 0 else 120.0
-
-    # Clamp to reasonable range
-    while bpm > 200:
+    bpm = 60.0 / float(np.median(iois))
+    while bpm > 180:
         bpm /= 2
-    while bpm < 40:
+    while bpm < 60:
         bpm *= 2
-
     return round(bpm, 1)
-
-
-# Standard durations in quarter-note lengths
-_STANDARD_DURATIONS = [
-    0.125,   # 32nd note
-    0.25,    # 16th note
-    0.375,   # dotted 16th
-    0.5,     # 8th note
-    0.75,    # dotted 8th
-    1.0,     # quarter
-    1.5,     # dotted quarter
-    2.0,     # half
-    3.0,     # dotted half
-    4.0,     # whole
-]
-
-
-def _snap_durations(score: stream.Score) -> None:
-    """Snap note durations to nearest standard rhythmic value."""
-    for note in score.flatten().notes:
-        ql = note.quarterLength
-        closest = min(_STANDARD_DURATIONS, key=lambda d: abs(d - ql))
-        if closest != ql:
-            note.quarterLength = closest
 
 
 def quantize_midi(
@@ -268,6 +259,7 @@ def quantize_midi(
     *,
     tempo_bpm: float | None = None,
     time_sig: str = "4/4",
+    grid: float = 0.25,
     output_format: str | None = None,
 ) -> tuple[Path, QuantizeResult]:
     """Quantize a MIDI file and export.
@@ -289,7 +281,7 @@ def quantize_midi(
 
     score = converter.parse(str(midi_path))
     quantized, result = quantize_score(
-        score, tempo_bpm=tempo_bpm, time_sig=time_sig,
+        score, tempo_bpm=tempo_bpm, time_sig=time_sig, grid=grid,
     )
 
     output_path = export_score(quantized, Path(output_path), fmt=output_format)
