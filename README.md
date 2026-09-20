@@ -145,9 +145,9 @@ Tested against standard AMT evaluation datasets:
 | Voice | VOCADITO (40 tracks) | **0.495** mean | Real solo singing, 7 languages |
 
 ```bash
-# Run benchmarks
-uv run python tests/test_end_to_end.py    # MAESTRO piano
-uv run python tests/test_vocal_benchmark.py  # VOCADITO vocals
+# Run benchmarks (download datasets on first run)
+uv run python benchmarks/maestro_piano.py    # MAESTRO piano
+uv run python benchmarks/vocadito_vocals.py  # VOCADITO vocals
 ```
 
 ## Architecture
@@ -168,3 +168,15 @@ choir2sheet/
 ## License
 
 MIT
+
+## Development
+
+```bash
+uv sync --extra dev
+uv run ruff check .
+uv run pytest            # unit tests (~5s, includes one Basic Pitch inference)
+uv run pytest -m "not slow"
+```
+
+Python 3.10 or 3.11 is required (Basic Pitch pins TensorFlow 2.15, which has no 3.12 wheels).
+CI runs lint + tests on both versions for every PR.

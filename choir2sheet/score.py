@@ -136,6 +136,8 @@ def export_score(
                 f"Unknown output format '.{ext}'. "
                 f"Supported: {', '.join(EXPORT_FORMATS.keys())}"
             )
+    else:
+        fmt = EXPORT_FORMATS.get(fmt.lower(), fmt)
 
     logger.info("Exporting score as '%s' → %s", fmt, output_path)
 
