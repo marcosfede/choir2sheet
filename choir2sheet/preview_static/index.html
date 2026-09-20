@@ -2,60 +2,95 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>choir2sheet preview</title>
+<title>choir2sheet</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
 <style>
-  :root { --bg:#f6f6f4; --panel:#fff; --line:#ddd; --accent:#2b6cb0; --muted:#999; }
-  * { box-sizing: border-box; }
-  body { margin:0; font: 14px/1.4 system-ui, sans-serif; background:var(--bg); color:#222;
-         display:grid; grid-template-rows:auto 1fr; grid-template-columns:280px 1fr; height:100vh; }
-  header { grid-column:1/3; display:flex; align-items:center; gap:12px; padding:8px 14px;
-           background:var(--panel); border-bottom:1px solid var(--line); }
-  header h1 { font-size:15px; margin:0 12px 0 0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  button { font:inherit; padding:5px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; cursor:pointer; }
-  button:hover { border-color:var(--accent); }
-  button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
-  button.solo.on { background:#d69e2e; border-color:#d69e2e; }
-  button.mute.on { background:#c53030; border-color:#c53030; }
-  #seek { flex:1; }
-  #time { font-variant-numeric: tabular-nums; min-width:110px; text-align:right; }
-  aside { border-right:1px solid var(--line); background:var(--panel); overflow:auto; padding:10px; }
-  aside h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:14px 0 6px; }
-  .track { display:grid; grid-template-columns:1fr auto auto; gap:6px; align-items:center; padding:6px 4px; border-bottom:1px solid #eee; }
-  .track .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .track .sub { color:var(--muted); font-size:11px; }
-  .track input[type=range] { grid-column:1/4; width:100%; }
-  .track button { padding:2px 8px; font-size:12px; }
-  main { overflow:auto; padding:10px 16px; }
-  #osmd { background:#fff; border:1px solid var(--line); border-radius:6px; padding:12px; min-height:300px; }
-  #status { color:var(--muted); font-size:12px; margin-left:auto; }
-  label.inline { display:flex; align-items:center; gap:4px; color:#555; }
+  :root {
+    --bg:#15161a; --bar:#1d1f25; --card:#24262e; --card2:#2b2e37; --line:#33363f;
+    --fg:#e8e9ec; --dim:#8b8f9a; --accent:#5b9cff; --solo:#f2c14e; --mute:#ff5d5d;
+    --paper:#fbfbf9;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { font:13px/1.35 -apple-system, "Inter", system-ui, sans-serif; background:var(--bg); color:var(--fg);
+         display:flex; flex-direction:column; user-select:none; }
+  button { font:inherit; color:inherit; background:var(--card2); border:1px solid transparent; border-radius:6px;
+           padding:6px 10px; cursor:pointer; line-height:1; }
+  button:hover { border-color:var(--line); background:#343846; }
+  button:active { transform:translateY(1px); }
+  button.icon { width:34px; height:34px; padding:0; display:inline-grid; place-items:center; font-size:15px; }
+  button.primary { background:var(--accent); color:#0b1220; width:44px; height:44px; border-radius:50%; font-size:18px; }
+  button.primary:hover { background:#79aeff; }
+  button.toggled { background:#3a3f4d; border-color:#4a5061; }
+
+  /* ── top bar ── */
+  #bar { display:flex; align-items:center; gap:14px; padding:10px 18px; background:var(--bar); border-bottom:1px solid var(--line); }
+  #bar .title { font-weight:600; font-size:15px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #bar .title small { color:var(--dim); font-weight:400; margin-left:8px; }
+  #transport { display:flex; align-items:center; gap:8px; margin-left:auto; }
+  #clock { font-variant-numeric:tabular-nums; font-size:15px; min-width:96px; text-align:center; letter-spacing:.02em; }
+  #clock span { color:var(--dim); }
+  .knob { display:flex; align-items:center; gap:6px; color:var(--dim); }
+  .knob input[type=number] { width:56px; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font:inherit; text-align:right; }
+  .knob input[type=range] { width:90px; }
+  #tempo-reset { padding:4px 6px; font-size:11px; }
+
+  /* ── timeline ── */
+  #timeline { position:relative; height:26px; background:var(--bar); border-bottom:1px solid var(--line); cursor:pointer; }
+  #timeline .fill { position:absolute; left:0; top:0; bottom:0; background:rgba(91,156,255,.18); pointer-events:none; }
+  #timeline .head { position:absolute; top:0; bottom:0; width:2px; background:var(--accent); pointer-events:none; }
+  #timeline .loop { position:absolute; top:0; bottom:0; background:rgba(242,193,78,.18); border-left:1px solid var(--solo); border-right:1px solid var(--solo); pointer-events:none; display:none; }
+  #timeline .ticks { position:absolute; inset:0; pointer-events:none; }
+  #timeline .tick { position:absolute; top:0; height:100%; border-left:1px solid var(--line); font-size:10px; color:var(--dim); padding:2px 0 0 4px; }
+
+  /* ── mixer ── */
+  #mixer { display:flex; gap:8px; padding:10px 18px; background:var(--bg); border-bottom:1px solid var(--line); overflow-x:auto; align-items:stretch; }
+  .ch { position:relative; flex:0 0 150px; background:var(--card); border-radius:10px; padding:10px 10px 8px; display:flex; flex-direction:column; gap:8px; border-top:3px solid var(--c, var(--accent)); }
+  .ch.off { opacity:.45; }
+  .ch .name { font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ch .meta { color:var(--dim); font-size:11px; margin-top:-6px; }
+  .ch .src { display:flex; background:var(--bg); border-radius:6px; padding:2px; }
+  .ch .src button { flex:1; padding:4px 0; font-size:11px; background:transparent; border-radius:4px; color:var(--dim); }
+  .ch .src button.on { background:var(--card2); color:var(--fg); }
+  .ch .src button:disabled { opacity:.35; cursor:default; }
+  .ch .sm { display:flex; gap:6px; }
+  .ch .sm button { flex:1; padding:5px 0; font-weight:700; font-size:12px; }
+  .ch .sm .s.on { background:var(--solo); color:#1a1400; }
+  .ch .sm .m.on { background:var(--mute); color:#fff; }
+  .ch .fader { -webkit-appearance:none; appearance:none; width:100%; height:4px; background:var(--line); border-radius:2px; outline:none; }
+  .ch .fader::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--fg); border:2px solid var(--card); box-shadow:0 0 0 1px var(--line); }
+  .ch .level { position:absolute; left:0; right:0; bottom:0; height:2px; background:var(--c, var(--accent)); transform-origin:left; transform:scaleX(0); border-radius:0 0 10px 10px; }
+  #master { flex:0 0 190px; background:var(--card2); }
+  #master .name { color:var(--dim); font-weight:500; text-transform:uppercase; font-size:11px; letter-spacing:.06em; }
+  #master .row { display:flex; gap:6px; }
+  #master .row button { flex:1; font-size:11px; padding:5px 0; }
+
+  /* ── score ── */
+  #sheet { flex:1; overflow:auto; background:#2a2b30; padding:22px; }
+  #osmd { background:var(--paper); border-radius:6px; max-width:1200px; margin:0 auto; padding:24px 28px; box-shadow:0 10px 40px rgba(0,0,0,.45); min-height:400px; user-select:text; }
+  #status { position:fixed; left:18px; bottom:8px; color:var(--dim); font-size:11px; background:rgba(21,22,26,.85); padding:3px 8px; border-radius:6px; }
+  kbd { background:var(--card2); border:1px solid var(--line); border-radius:4px; padding:0 4px; font-size:10px; }
 </style>
 </head>
 <body>
-<header>
-  <h1 id="title">choir2sheet</h1>
-  <button id="play" title="Space">▶ Play</button>
-  <button id="stop">■ Stop</button>
-  <input id="seek" type="range" min="0" max="1000" value="0">
-  <span id="time">0:00 / 0:00</span>
-  <label class="inline">tempo <input id="tempo" type="number" min="25" max="300" step="5" value="100" style="width:60px">%</label>
-  <label class="inline"><input id="follow" type="checkbox" checked> follow cursor</label>
-  <span id="status">loading…</span>
-</header>
-<aside>
-  <div style="display:flex;gap:6px">
-    <button id="all-on">All on</button>
-    <button id="clear-solo">Clear solo</button>
+<div id="bar">
+  <div class="title" id="title">choir2sheet <small id="subtitle"></small></div>
+  <div id="transport">
+    <button class="icon" id="rewind" title="Back to start">⇤</button>
+    <button class="primary" id="play" title="Play / Pause (Space)">▶</button>
+    <button class="icon" id="loop" title="Loop selection (drag on the timeline)">⟲</button>
+    <div id="clock">0:00.0<span> / 0:00</span></div>
+    <label class="knob" title="Tempo">♩ <input id="tempo" type="number" min="25" max="200" step="5" value="100"> %
+      <button id="tempo-reset" title="Reset tempo">reset</button></label>
+    <label class="knob" title="Master volume">🔊 <input id="master-vol" type="range" min="0" max="100" value="80"></label>
+    <label class="knob" title="Scroll the score with playback"><input id="follow" type="checkbox" checked> follow</label>
   </div>
-  <h2>MIDI tracks</h2>
-  <div id="tracks"></div>
-  <div id="audio-section" hidden>
-    <h2>Audio</h2>
-    <div id="audio"></div>
-  </div>
-</aside>
-<main><div id="osmd"></div></main>
+</div>
+<div id="timeline"><div class="ticks"></div><div class="loop"></div><div class="fill"></div><div class="head"></div></div>
+<div id="mixer"></div>
+<div id="sheet"><div id="osmd"></div></div>
+<div id="status">loading…</div>
 
 <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
@@ -64,149 +99,239 @@
 (async function () {
   const $ = (id) => document.getElementById(id);
   const status = (t) => { $('status').textContent = t; };
+  const COLORS = ['#5b9cff', '#ff7ab6', '#5fd3a5', '#f2c14e', '#c084fc', '#ff9f5b', '#4dd0e1', '#a3e635'];
+  const fmt = (s, tenths) => {
+    const m = Math.floor(s / 60), sec = s % 60;
+    return `${m}:${tenths ? sec.toFixed(1).padStart(4, '0') : String(Math.floor(sec)).padStart(2, '0')}`;
+  };
 
   const manifest = await (await fetch('/manifest.json')).json();
-  $('title').textContent = manifest.title;
-  document.title = manifest.title + ' – choir2sheet preview';
+  $('title').firstChild.textContent = manifest.title + ' ';
+  document.title = manifest.title + ' – choir2sheet';
 
-  // ── MIDI ───────────────────────────────────────────────────────────
+  // ── MIDI + notation ────────────────────────────────────────────────
   const midi = new Midi(await (await fetch(manifest.midi)).arrayBuffer());
   const ppq = midi.header.ppq;
   const duration = midi.duration;
   const partNames = manifest.parts || [];
-  const tracks = midi.tracks
-    .map((t, i) => ({ t, name: (partNames.length === midi.tracks.length && partNames[i]) || t.name || t.instrument.name || `Track ${i + 1}` }))
+  const midiTracks = midi.tracks
+    .map((t, i) => ({ t, name: (partNames.length === midi.tracks.length && partNames[i]) || t.name || `Part ${i + 1}` }))
     .filter(x => x.t.notes.length > 0);
 
-  // ── Notation ───────────────────────────────────────────────────────
   const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay('osmd', {
-    autoResize: true, drawTitle: true, followCursor: true, drawPartNames: true,
+    autoResize: true, drawTitle: true, drawComposer: true, drawPartNames: true, followCursor: true,
+    cursorsOptions: [{ type: 0, color: '#5b9cff', alpha: 0.35, follow: true }],
   });
   await osmd.load(manifest.score);
   osmd.render();
-  osmd.cursor.show();
-  osmd.cursor.reset();
-  // cursor timestamp (whole notes) → seconds, honouring MIDI tempo map
-  const cursorSeconds = () =>
-    midi.header.ticksToSeconds(osmd.cursor.iterator.currentTimeStamp.RealValue * 4 * ppq);
+  osmd.cursor.show(); osmd.cursor.reset();
+  const cursorSeconds = () => midi.header.ticksToSeconds(osmd.cursor.iterator.currentTimeStamp.RealValue * 4 * ppq);
 
-  // ── Synth per track ────────────────────────────────────────────────
-  const master = new Tone.Volume(-6).toDestination();
-  const state = tracks.map(({ t, name }) => {
-    const ch = new Tone.Channel({ volume: 0 }).connect(master);
+  // ── Channels: one per part; audio stem attached when its name matches ──
+  const audioFiles = { ...(manifest.audio || {}) };            // stem name → url
+  const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const takeAudioFor = (name) => {
+    const n = norm(name);
+    const key = Object.keys(audioFiles).find(k => n.includes(norm(k)) || norm(k).includes(n));
+    if (!key) return null;
+    const url = audioFiles[key]; delete audioFiles[key];
+    return { key, url };
+  };
+
+  const master = new Tone.Volume(-4).toDestination();
+  const verb = new Tone.Reverb({ decay: 1.6, wet: 0.18 }).connect(master);
+  const channels = [];
+
+  function makeSynth(ch) {
     const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.02, decay: 0.1, sustain: 0.6, release: 0.15 },
+      oscillator: { type: 'fatsawtooth', count: 2, spread: 12 },
+      envelope: { attack: 0.03, decay: 0.2, sustain: 0.5, release: 0.25 },
+      volume: -10,
     }).connect(ch);
-    synth.maxPolyphony = 16;
-    const part = new Tone.Part((time, n) => {
-      synth.triggerAttackRelease(n.name, Math.max(0.05, n.duration), time, n.velocity);
+    synth.maxPolyphony = 12;
+    return synth;
+  }
+
+  midiTracks.forEach(({ t, name }, i) => {
+    const ch = { name, color: COLORS[i % COLORS.length], solo: false, mute: false, gain: 0.8, source: 'synth',
+                 notes: t.notes.length, midiNode: null, synth: null, part: null, audio: null };
+    ch.midiNode = new Tone.Channel().connect(verb);
+    ch.synth = makeSynth(ch.midiNode);
+    ch.part = new Tone.Part((time, n) => {
+      ch.synth.triggerAttackRelease(n.name, Math.max(0.06, n.duration), time, n.velocity);
+      ch.pulse = 1;
     }, t.notes.map(n => [n.time, n])).start(0);
-    return { track: t, name, ch, synth, part,
-             solo: false, mute: false };
+    const a = takeAudioFor(name);
+    if (a) { ch.audio = new Audio(a.url); ch.audio.preload = 'auto'; ch.audioName = a.key; }
+    channels.push(ch);
   });
-
-  // ── Audio files (optional) ─────────────────────────────────────────
-  const audio = Object.entries(manifest.audio || {}).map(([name, url]) => {
+  // stems that matched no part → audio-only channels
+  Object.entries(audioFiles).forEach(([key, url], j) => {
     const el = new Audio(url); el.preload = 'auto';
-    return { name, el, solo: false, mute: false, volume: 1 };
+    channels.push({ name: key, color: COLORS[(midiTracks.length + j) % COLORS.length], solo: false, mute: false, gain: 0.8,
+                    source: 'audio', notes: 0, audio: el, audioName: key });
   });
-  if (audio.length) $('audio-section').hidden = false;
 
+  function audible(ch) {
+    const anySolo = channels.some(c => c.solo);
+    return !ch.mute && (!anySolo || ch.solo);
+  }
   function applyMix() {
-    const anySolo = state.some(s => s.solo);
-    state.forEach(s => { s.ch.mute = s.mute || (anySolo && !s.solo); });
-    const anyASolo = audio.some(a => a.solo);
-    audio.forEach(a => { a.el.muted = a.mute || (anyASolo && !a.solo); });
-    document.querySelectorAll('[data-kind]').forEach(b => {
-      const list = b.dataset.kind === 'midi' ? state : audio;
-      b.classList.toggle('on', list[b.dataset.i][b.dataset.what]);
+    channels.forEach(ch => {
+      const on = audible(ch);
+      if (ch.midiNode) ch.midiNode.mute = !on || ch.source !== 'synth';
+      if (ch.midiNode) ch.midiNode.volume.value = ch.gain > 0 ? 20 * Math.log10(ch.gain / 0.8) : -Infinity;
+      if (ch.audio) { ch.audio.muted = !on || ch.source !== 'audio'; ch.audio.volume = Math.min(1, ch.gain); }
+      const el = ch.el;
+      el.classList.toggle('off', !on);
+      el.querySelector('.s').classList.toggle('on', ch.solo);
+      el.querySelector('.m').classList.toggle('on', ch.mute);
+      el.querySelectorAll('.src button').forEach(b => b.classList.toggle('on', b.dataset.src === ch.source));
     });
   }
 
-  function trackRow(container, item, kind, i, onVolume) {
-    const row = document.createElement('div'); row.className = 'track';
-    row.innerHTML = `
-      <div class="name" title="${item.name}">${item.name}
-        <div class="sub">${kind === 'midi' ? item.track.notes.length + ' notes' : 'audio'}</div></div>
-      <button class="solo" data-kind="${kind}" data-i="${i}" data-what="solo" title="Solo">S</button>
-      <button class="mute" data-kind="${kind}" data-i="${i}" data-what="mute" title="Mute">M</button>
-      <input type="range" min="0" max="100" value="80" title="Volume">`;
-    row.querySelectorAll('button').forEach(b => b.onclick = () => { item[b.dataset.what] = !item[b.dataset.what]; applyMix(); });
-    row.querySelector('input').oninput = (e) => onVolume(+e.target.value / 100);
-    container.appendChild(row);
-  }
-  state.forEach((s, i) => trackRow($('tracks'), s, 'midi', i, v => { s.ch.volume.value = v > 0 ? 20 * Math.log10(v / 0.8) : -Infinity; }));
-  audio.forEach((a, i) => trackRow($('audio'), a, 'audio', i, v => { a.el.volume = Math.min(1, v / 0.8); }));
-  $('all-on').onclick = () => { state.concat(audio).forEach(x => { x.mute = false; x.solo = false; }); applyMix(); };
-  $('clear-solo').onclick = () => { state.concat(audio).forEach(x => { x.solo = false; }); applyMix(); };
+  // ── Mixer UI ───────────────────────────────────────────────────────
+  const mixer = $('mixer');
+  const masterEl = document.createElement('div');
+  masterEl.className = 'ch'; masterEl.id = 'master';
+  masterEl.innerHTML = `
+    <div class="name">Master</div>
+    <div class="row"><button id="all-synth">All synth</button><button id="all-audio">All audio</button></div>
+    <div class="row"><button id="unmute">Unmute all</button><button id="unsolo">Clear solo</button></div>`;
+  mixer.appendChild(masterEl);
+  channels.forEach(ch => {
+    const el = document.createElement('div'); el.className = 'ch'; el.style.setProperty('--c', ch.color); ch.el = el;
+    const hasSynth = !!ch.synth, hasAudio = !!ch.audio;
+    el.innerHTML = `
+      <div class="name" title="${ch.name}">${ch.name}</div>
+      <div class="meta">${hasSynth ? ch.notes + ' notes' : ''}${hasSynth && hasAudio ? ' · ' : ''}${hasAudio ? 'stem: ' + ch.audioName : ''}</div>
+      <div class="src">
+        <button data-src="synth" ${hasSynth ? '' : 'disabled'} title="Play the transcribed notes">Synth</button>
+        <button data-src="audio" ${hasAudio ? '' : 'disabled'} title="Play the original audio stem">Audio</button>
+      </div>
+      <div class="sm"><button class="s" title="Solo">S</button><button class="m" title="Mute">M</button></div>
+      <input class="fader" type="range" min="0" max="100" value="80" title="Volume">
+      <div class="level"></div>`;
+    el.querySelectorAll('.src button').forEach(b => b.onclick = () => { ch.source = b.dataset.src; applyMix(); syncAudio(playing); });
+    el.querySelector('.s').onclick = () => { ch.solo = !ch.solo; applyMix(); };
+    el.querySelector('.m').onclick = () => { ch.mute = !ch.mute; applyMix(); };
+    el.querySelector('.fader').oninput = (e) => { ch.gain = +e.target.value / 100; applyMix(); };
+    mixer.appendChild(el);
+  });
+  $('all-synth').onclick = () => { channels.forEach(c => { if (c.synth) c.source = 'synth'; }); applyMix(); syncAudio(playing); };
+  $('all-audio').onclick = () => { channels.forEach(c => { if (c.audio) c.source = 'audio'; }); applyMix(); syncAudio(playing); };
+  $('unmute').onclick = () => { channels.forEach(c => { c.mute = false; }); applyMix(); };
+  $('unsolo').onclick = () => { channels.forEach(c => { c.solo = false; }); applyMix(); };
+  $('master-vol').oninput = (e) => { const v = +e.target.value / 100; master.volume.value = v > 0 ? 20 * Math.log10(v / 0.8) - 4 : -Infinity; };
   applyMix();
 
-  // ── Transport ──────────────────────────────────────────────────────
+  // ── Transport (score position tracked in ticks so tempo scaling is exact) ──
   const T = Tone.Transport;
-  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-  let playing = false;
-  // Score position in seconds at nominal tempo. Parts are scheduled in ticks at
-  // Transport's default 120 BPM, so position = ticks / (2 * PPQ) stays valid
-  // when the tempo slider scales T.bpm.
   const pos = () => T.ticks / (2 * T.PPQ);
   const setPos = (sec) => { T.ticks = Math.round(sec * 2 * T.PPQ); };
+  let playing = false;
+  let loop = null;   // {a, b} seconds
 
   function syncAudio(start) {
     const t = pos();
-    audio.forEach(a => {
-      if (Math.abs(a.el.currentTime - t) > 0.15) a.el.currentTime = t;
-      if (start) a.el.playbackRate = T.bpm.value / 120;
-      if (start && a.el.paused) a.el.play().catch(() => {});
-      if (!start && !a.el.paused) a.el.pause();
+    channels.forEach(ch => {
+      const el = ch.audio; if (!el) return;
+      const active = start && ch.source === 'audio' && audible(ch);
+      if (Math.abs(el.currentTime - t) > 0.12) el.currentTime = t;
+      el.playbackRate = T.bpm.value / 120;
+      if (active && el.paused) el.play().catch(() => {});
+      if (!active && !el.paused) el.pause();
     });
   }
   function moveCursorTo(sec) {
     if (cursorSeconds() > sec || osmd.cursor.iterator.EndReached) osmd.cursor.reset();
-    let guard = 100000;
+    let guard = 200000;
     while (!osmd.cursor.iterator.EndReached && cursorSeconds() <= sec && guard--) osmd.cursor.next();
     osmd.cursor.update();
   }
   async function play() {
     await Tone.start();
-    if (pos() >= duration) setPos(0);
-    playing = true; $('play').textContent = '❚❚ Pause'; $('play').classList.add('on');
+    if (pos() >= duration || (loop && (pos() < loop.a || pos() >= loop.b))) setPos(loop ? loop.a : 0);
+    playing = true; $('play').textContent = '❚❚';
     T.start(); syncAudio(true);
   }
   function pause() {
-    playing = false; $('play').textContent = '▶ Play'; $('play').classList.remove('on');
-    T.pause(); state.forEach(s => s.synth.releaseAll()); syncAudio(false);
+    playing = false; $('play').textContent = '▶';
+    T.pause(); channels.forEach(c => c.synth && c.synth.releaseAll()); syncAudio(false);
   }
   function seek(sec) {
     setPos(Math.max(0, Math.min(duration, sec)));
-    state.forEach(s => s.synth.releaseAll());
+    channels.forEach(c => c.synth && c.synth.releaseAll());
     syncAudio(playing); moveCursorTo(pos());
   }
   $('play').onclick = () => (playing ? pause() : play());
-  $('stop').onclick = () => { pause(); seek(0); };
-  $('seek').oninput = (e) => seek(+e.target.value / 1000 * duration);
-  $('tempo').onchange = (e) => {
-    T.bpm.value = 120 * (+e.target.value / 100);
-    syncAudio(playing);
-  };
-  document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); $('play').click(); }
-  });
-  osmd.FollowCursor = true;
+  $('rewind').onclick = () => seek(loop ? loop.a : 0);
+  $('tempo').onchange = (e) => { T.bpm.value = 120 * Math.min(200, Math.max(25, +e.target.value)) / 100; syncAudio(playing); };
+  $('tempo-reset').onclick = () => { $('tempo').value = 100; T.bpm.value = 120; syncAudio(playing); };
   $('follow').onchange = (e) => { osmd.FollowCursor = e.target.checked; };
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); $('play').click(); }
+    if (e.code === 'Home') seek(0);
+    if (e.code === 'ArrowLeft') seek(pos() - 5);
+    if (e.code === 'ArrowRight') seek(pos() + 5);
+  });
 
+  // ── Timeline: click = seek, drag = loop region ─────────────────────
+  const tl = $('timeline');
+  const tlFrac = (e) => Math.max(0, Math.min(1, (e.clientX - tl.getBoundingClientRect().left) / tl.clientWidth));
+  {
+    const ticks = tl.querySelector('.ticks'); const step = duration > 240 ? 30 : duration > 90 ? 15 : 5;
+    for (let s = 0; s < duration; s += step) {
+      const d = document.createElement('div'); d.className = 'tick'; d.style.left = (s / duration * 100) + '%'; d.textContent = fmt(s); ticks.appendChild(d);
+    }
+  }
+  let dragStart = null;
+  tl.onpointerdown = (e) => { dragStart = tlFrac(e); tl.setPointerCapture(e.pointerId); };
+  tl.onpointermove = (e) => {
+    if (dragStart === null) return;
+    const f = tlFrac(e);
+    if (Math.abs(f - dragStart) > 0.005) setLoop(Math.min(f, dragStart) * duration, Math.max(f, dragStart) * duration);
+  };
+  tl.onpointerup = (e) => {
+    const f = tlFrac(e);
+    if (dragStart !== null && Math.abs(f - dragStart) <= 0.005) { seek(f * duration); }
+    dragStart = null;
+  };
+  function setLoop(a, b) {
+    loop = (a !== null && b - a > 0.2) ? { a, b } : null;
+    const el = tl.querySelector('.loop');
+    el.style.display = loop ? 'block' : 'none';
+    if (loop) { el.style.left = (loop.a / duration * 100) + '%'; el.style.width = ((loop.b - loop.a) / duration * 100) + '%'; }
+    $('loop').classList.toggle('toggled', !!loop);
+    if (loop && (pos() < loop.a || pos() >= loop.b)) seek(loop.a);
+  }
+  $('loop').onclick = () => setLoop(null);
+
+  // ── Frame loop ─────────────────────────────────────────────────────
+  $('clock').lastChild.textContent = ` / ${fmt(duration)}`;
   function tick() {
     const t = pos();
     if (playing) {
-      moveCursorTo(t);
-      if (t >= duration) pause();
+      if (loop && t >= loop.b) seek(loop.a);
+      else if (t >= duration) { pause(); seek(0); }
+      else moveCursorTo(t);
     }
-    $('seek').value = Math.round(t / duration * 1000);
-    $('time').textContent = `${fmt(t)} / ${fmt(duration)}`;
+    tl.querySelector('.fill').style.width = (t / duration * 100) + '%';
+    tl.querySelector('.head').style.left = (t / duration * 100) + '%';
+    $('clock').firstChild.textContent = fmt(t, true);
+    channels.forEach(ch => {
+      if (!ch.el) return;
+      let lvl = 0;
+      if (ch.source === 'synth') { ch.pulse = (ch.pulse || 0) * 0.85; lvl = ch.pulse; }
+      else if (ch.audio && !ch.audio.paused) lvl = 0.6;
+      ch.el.querySelector('.level').style.transform = `scaleX(${audible(ch) ? lvl : 0})`;
+    });
     requestAnimationFrame(tick);
   }
   tick();
-  status(`${state.length} tracks · ${fmt(duration)}${audio.length ? ` · ${audio.length} audio files` : ''}`);
+  $('subtitle').textContent = `${midiTracks.length} parts · ${fmt(duration)}`;
+  status('Space play/pause · ←/→ ±5s · drag on the timeline to loop');
 })().catch(err => { document.getElementById('status').textContent = 'error: ' + err; console.error(err); });
 </script>
 </body>
