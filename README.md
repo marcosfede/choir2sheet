@@ -96,6 +96,17 @@ uv run choir2sheet formats
 # → {"ok": true, "formats": ["abc", "lilypond", "mid", "musicxml", ...]}
 ```
 
+### Preview (score + per-track playback in the browser)
+
+```bash
+uv run choir2sheet preview score.musicxml                    # any MusicXML / MIDI / ABC file
+uv run choir2sheet preview score.musicxml --audio-dir voices/  # also play separated stems
+```
+
+Opens a local webapp: rendered notation with a playback cursor, and one MIDI track per
+part with solo / mute / volume — play the whole ensemble or a single line, slow the tempo,
+and (optionally) A/B against the original audio stems. Works standalone on any score.
+
 ### Agent Workflow Example
 
 ```bash
